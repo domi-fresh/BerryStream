@@ -1,0 +1,6 @@
+*.mkv
+*.mp4
+*.log
+__pycache__/
+.DS_Store
+go2rtc

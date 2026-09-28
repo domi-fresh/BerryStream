@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Canon EVF Monitor</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      background-color: #000000;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #viewport-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+    }
+    #evf-feed {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    /* Touch HUD overlay for status */
+    #hud {
+      position: absolute;
+      top: env(safe-area-inset-top, 12px);
+      left: env(safe-area-inset-left, 16px);
+      background: rgba(0, 0, 0, 0.6);
+      color: #00ff66;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0.8;
+      transition: opacity 0.3s ease;
+    }
+    .hud-alert {
+      color: #ff3344 !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="viewport-container">
+    <div id="hud">USB LINK • LIVE</div>
+    <img id="evf-feed" src="http://172.20.10.2:1984/api/stream.mjpeg?src=evf" alt="Live EVF Stream">
+  </div>
+
+  <script>
+    const streamImg = document.getElementById('evf-feed');
+    const hud = document.getElementById('hud');
+
+    // 1. Prevent iOS Display Sleep via Screen Wake Lock API
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.log('WakeLock error:', err);
+      }
+    }
+    requestWakeLock();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    });
+
+    // 2. Stream Recovery on Error
+    streamImg.onerror = () => {
+      hud.textContent = "SIGNAL LOST • RECONNECTING";
+      hud.classList.add('hud-alert');
+      setTimeout(() => {
+        streamImg.src = "http://172.20.10.2:1984/api/stream.mjpeg?src=evf&t=" + new Date().getTime();
+      }, 1000);
+    };
+
+    streamImg.onload = () => {
+      hud.textContent = "USB LINK • LIVE";
+      hud.classList.remove('hud-alert');
+    };
+
+    // 3. Double-tap to toggle between fit-to-screen and fill-screen (zoom)
+    let lastTap = 0;
+    let isFill = false;
+    document.body.addEventListener('touchend', (e) => {
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTap;
+      if (tapLength < 300 && tapLength > 0) {
+        isFill = !isFill;
+        streamImg.style.objectFit = isFill ? 'cover' : 'contain';
+        e.preventDefault();
+      }
+      lastTap = currentTime;
+    });
+
+    // Fade out HUD after 4 seconds
+    setTimeout(() => { hud.style.opacity = '0.2'; }, 4000);
+  </script>
+</body>
+</html>
