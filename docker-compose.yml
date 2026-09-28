@@ -3,9 +3,11 @@ services:
     build: .
     container_name: canopi
     restart: unless-stopped
+    privileged: true
     network_mode: host
-    devices:
-      - /dev/video0:/dev/video0
     volumes:
+      - /dev:/dev
       - ./go2rtc.yaml:/app/go2rtc.yaml:ro
       - ./web:/app/web:ro
+      - ./server.py:/app/server.py:ro
+      - ./recordings:/app/recordings
