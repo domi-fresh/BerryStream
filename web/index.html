@@ -66,14 +66,21 @@
 
   <div id="viewport-container">
     <div id="hud">USB LINK • LIVE</div>
-    <img id="evf-feed" src="http://172.20.10.2:1984/api/stream.mjpeg?src=evf" alt="Live EVF Stream">
+    <img id="evf-feed" src="" alt="Live EVF Stream">
   </div>
 
   <script>
     const streamImg = document.getElementById('evf-feed');
     const hud = document.getElementById('hud');
+    // Dynamically target port 1984 on the current host IP
+    function getStreamUrl() {
+      return `${window.location.protocol}//${window.location.hostname}:1984/api/stream.mjpeg?src=evf`;
+    }
 
-    // 1. Prevent iOS Display Sleep via Screen Wake Lock API
+    // Initialize stream
+    streamImg.src = getStreamUrl();
+    
+    // Prevent iOS Display Sleep via Screen Wake Lock API
     let wakeLock = null;
     async function requestWakeLock() {
       try {
@@ -89,25 +96,27 @@
       if (document.visibilityState === 'visible') requestWakeLock();
     });
 
-    // 2. Stream Recovery on Error
+    // Stream Recovery on Error
     streamImg.onerror = () => {
       hud.textContent = "SIGNAL LOST • RECONNECTING";
       hud.classList.add('hud-alert');
+      hud.style.opacity = '1';
       setTimeout(() => {
-        streamImg.src = "http://172.20.10.2:1984/api/stream.mjpeg?src=evf&t=" + new Date().getTime();
+        streamImg.src = `${getStreamUrl()}&t=${Date.now()}`;
       }, 1000);
     };
 
     streamImg.onload = () => {
       hud.textContent = "USB LINK • LIVE";
       hud.classList.remove('hud-alert');
+      setTimeout(() => { hud.style.opacity = '0.2'; }, 4000);
     };
 
-    // 3. Double-tap to toggle between fit-to-screen and fill-screen (zoom)
+    // Double-tap to toggle between fit-to-screen and fill-screen (zoom)
     let lastTap = 0;
     let isFill = false;
     document.body.addEventListener('touchend', (e) => {
-      const currentTime = new Date().getTime();
+      const currentTime = Date.now();
       const tapLength = currentTime - lastTap;
       if (tapLength < 300 && tapLength > 0) {
         isFill = !isFill;

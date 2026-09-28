@@ -1,0 +1,11 @@
+services:
+  canopi:
+    build: .
+    container_name: canopi
+    restart: unless-stopped
+    network_mode: host
+    devices:
+      - /dev/video0:/dev/video0
+    volumes:
+      - ./go2rtc.yaml:/app/go2rtc.yaml:ro
+      - ./web:/app/web:ro
