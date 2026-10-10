@@ -369,7 +369,7 @@ def process_recording(raw_filename):
     finally:
         encoding_status.pop(base_name, None)
 
-class CanopiHandler(SimpleHTTPRequestHandler):
+class BerryStreamHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
@@ -672,6 +672,9 @@ class CanopiHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+# Backward-compatibility alias
+CanopiHandler = BerryStreamHandler
+
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("0.0.0.0", 8000), CanopiHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", 8000), BerryStreamHandler)
     server.serve_forever()

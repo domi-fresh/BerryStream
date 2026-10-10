@@ -1,7 +1,7 @@
 services:
-  canopi:
+  berrystream:
     build: .
-    container_name: canopi
+    container_name: berrystream
     restart: unless-stopped
     privileged: true
     network_mode: host

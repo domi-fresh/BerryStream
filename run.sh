@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Canopi — All-in-One Automated Setup & Launcher
+# BerryStream — All-in-One Automated Setup & Launcher
 # Cross-compatible with:
 #   - Raspberry Pi 5
 #   - Raspberry Pi 4
@@ -17,7 +17,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}====================================================${NC}"
-echo -e "${BLUE}      Canopi Ultra-Low-Latency Field EVF Setup      ${NC}"
+echo -e "${BLUE}    BerryStream Ultra-Low-Latency Field EVF Setup   ${NC}"
 echo -e "${BLUE}====================================================${NC}"
 
 # 1. Require administrative privileges
@@ -64,7 +64,7 @@ if echo "$BOARD_MODEL" | grep -qi "Zero 2"; then
       cat << 'EOF' >> "$BOOT_CONFIG"
 
 # ==============================================================================
-# Canopi Performance Tuning (Raspberry Pi Zero 2 / 2W Overclock)
+# BerryStream Performance Tuning (Raspberry Pi Zero 2 / 2W Overclock)
 # ==============================================================================
 arm_freq=1200
 gpu_freq=500
@@ -139,12 +139,18 @@ mkdir -p "$SCRIPT_DIR/recordings/thumbs" "$SCRIPT_DIR/recordings/mp4"
 chmod -R 777 "$SCRIPT_DIR/recordings"
 
 # 6. Configure Systemd Service for 100% reliable startup on system boot
-SERVICE_FILE="/etc/systemd/system/canopi.service"
+# Clean up legacy canopi service if present
+if [ -f "/etc/systemd/system/canopi.service" ]; then
+  systemctl disable --now canopi.service >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/canopi.service
+fi
+
+SERVICE_FILE="/etc/systemd/system/berrystream.service"
 echo -e "${BLUE}==> Configuring systemd service (${SERVICE_FILE}) for auto-start on boot...${NC}"
 
 cat <<EOF > "$SERVICE_FILE"
 [Unit]
-Description=Canopi Ultra-Low-Latency Field EVF Monitor
+Description=BerryStream Ultra-Low-Latency Field EVF Monitor
 After=docker.service network-online.target
 Requires=docker.service
 
@@ -161,11 +167,11 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable canopi.service >/dev/null 2>&1
+systemctl enable berrystream.service >/dev/null 2>&1
 echo -e "${GREEN}==> Boot auto-start service enabled successfully.${NC}"
 
 # 7. Build and launch container
-echo -e "${BLUE}==> Building and launching Canopi container...${NC}"
+echo -e "${BLUE}==> Building and launching BerryStream container...${NC}"
 $DOCKER_COMPOSE_CMD up -d --build
 
 # 8. Success Banner & Instructions
@@ -173,7 +179,7 @@ IP_HINT=$(ip -4 addr show usb0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
 
 echo ""
 echo -e "${GREEN}====================================================${NC}"
-echo -e "${GREEN}       ✓ Canopi is Ready & Running!                ${NC}"
+echo -e "${GREEN}    ✓ BerryStream is Ready & Running!               ${NC}"
 echo -e "${GREEN}====================================================${NC}"
 echo ""
 echo -e "1. Connect your iPhone via Lightning/USB-C to the Raspberry Pi."
@@ -185,5 +191,5 @@ echo ""
 echo -e "   (Alternative direct port if using Wi-Fi: http://<pi-ip>:8000)"
 echo ""
 echo -e "Tip: In Safari, tap '${YELLOW}Share -> Add to Home Screen${NC}' for a full-screen borderless OLED viewfinder."
-echo -e "${GREEN}Canopi will now automatically start on every system boot.${NC}"
+echo -e "${GREEN}BerryStream will now automatically start on every system boot.${NC}"
 echo ""

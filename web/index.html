@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Canopi EVF Monitor</title>
+  <meta name="apple-mobile-web-app-title" content="BerryStream">
+  <meta name="application-name" content="BerryStream">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <title>BerryStream EVF Monitor</title>
   <style>
     * {
       box-sizing: border-box;
@@ -667,7 +672,7 @@
           if (data.settings) currentSettings = { ...currentSettings, ...data.settings };
         }
       } catch(e) {
-        const local = localStorage.getItem('canopi_settings');
+        const local = localStorage.getItem('berrystream_settings') || localStorage.getItem('canopi_settings');
         if (local) currentSettings = { ...currentSettings, ...JSON.parse(local) };
       }
       updateSettingsUI();
@@ -704,7 +709,7 @@
 
     async function onAutoTranscodeToggle(enabled) {
       currentSettings.auto_transcode = enabled;
-      localStorage.setItem('canopi_settings', JSON.stringify(currentSettings));
+      localStorage.setItem('berrystream_settings', JSON.stringify(currentSettings));
       updateSettingsUI();
 
       try {
@@ -746,7 +751,7 @@
 
       const prevStreamPreset = currentSettings.stream_preset;
       currentSettings[type] = value;
-      localStorage.setItem('canopi_settings', JSON.stringify(currentSettings));
+      localStorage.setItem('berrystream_settings', JSON.stringify(currentSettings));
       updateSettingsUI();
 
       try {

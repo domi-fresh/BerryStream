@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Set up test environment paths before importing server
-TEST_DIR = tempfile.mkdtemp(prefix="canopi_test_")
+TEST_DIR = tempfile.mkdtemp(prefix="berrystream_test_")
 REC_DIR = os.path.join(TEST_DIR, "recordings")
 THUMB_DIR = os.path.join(REC_DIR, "thumbs")
 MP4_DIR = os.path.join(REC_DIR, "mp4")
@@ -154,7 +154,7 @@ class TestAutoTranscode(unittest.TestCase):
             f.write("mock mkv")
 
         # Mock handler POST request
-        handler = server.CanopiHandler.__new__(server.CanopiHandler)
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
         handler.headers = {"Content-Length": "25"}
         handler.rfile = MagicMock()
         handler.rfile.read.return_value = json.dumps({"auto_transcode": True}).encode("utf-8")
@@ -174,7 +174,7 @@ class TestAutoTranscode(unittest.TestCase):
         with open(os.path.join(server.REC_DIR, "evf_20261010_222222.mkv"), "w") as f:
             f.write("mock mkv")
 
-        handler = server.CanopiHandler.__new__(server.CanopiHandler)
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
         handler.headers = {}
         handler.path = "/api/transcode?id=evf_20261010_222222"
         handler._send_json = MagicMock()
@@ -189,7 +189,7 @@ class TestAutoTranscode(unittest.TestCase):
 
     def test_transcode_endpoint_rejects_invalid_id(self):
         """Test /api/transcode rejects path traversal attempts."""
-        handler = server.CanopiHandler.__new__(server.CanopiHandler)
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
         handler.headers = {}
         handler.path = "/api/transcode?id=../../evil"
         handler._send_json = MagicMock()
@@ -208,7 +208,7 @@ class TestAutoTranscode(unittest.TestCase):
         with open(os.path.join(server.REC_DIR, "evf_20261010_444444.mkv"), "w") as f:
             f.write("mock mkv")
 
-        handler = server.CanopiHandler.__new__(server.CanopiHandler)
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
         handler.headers = {}
         handler.path = "/api/transcode"
         handler._send_json = MagicMock()
@@ -237,7 +237,7 @@ class TestAutoTranscode(unittest.TestCase):
         with open(os.path.join(server.REC_DIR, "evf_20261010_333333.mkv"), "w") as f:
             f.write("mock mkv")
 
-        handler = server.CanopiHandler.__new__(server.CanopiHandler)
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
         handler.path = "/api/gallery"
         handler._send_json = MagicMock()
 

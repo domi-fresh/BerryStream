@@ -1,36 +1,36 @@
-# Canopi — Canon Ultra-Low-Latency Field EVF & Recorder
+# BerryStream — Raspberry Pi Ultra-Low-Latency Field EVF & Recorder
 
-Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for digital cameras (e.g., Canon EOS R/M series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
+BerryStream is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for digital cameras (e.g., Canon EOS R/M series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
 
 ---
 
 ## Highlights & Hardware Compatibility
-- **One-Command Setup:** Clone the repo and run `cd canopi && docker compose up -d` — everything is configured, installed, and launched automatically in Docker.
-- **Auto-Start on Boot:** Preconfigures a systemd service so Canopi starts automatically on every boot.
+- **One-Command Setup:** Clone the repo and run `cd BerryStream && docker compose up -d` — everything is configured, installed, and launched automatically in Docker.
+- **Auto-Start on Boot:** Preconfigures a systemd service (`berrystream.service`) so BerryStream starts automatically on every boot.
 - **Cross-Compatible Hardware:** Out of the box support for:
   - **Raspberry Pi 5** (*recommended*)
   - **Raspberry Pi 4** (*recommended*)
   - **Raspberry Pi 3** (Model B / B+)
-  - **Raspberry Pi Zero 2W** (*I/O seems to be a bottleneck though -> **720p60** limition for smooth streaming*)
-- **Automated Pi Zero 2W Tuning:** detects Pi Zero 2W board and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
+  - **Raspberry Pi Zero 2W** (*I/O seems to be a bottleneck though -> **720p60** limitation for smooth streaming*)
+- **Automated Pi Zero 2W Tuning:** Detects Pi Zero 2W board and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to near Pi 3 performance.
 - **100% Docker-Based:** Clean containerized with zero host pollution.
 - **Direct 1:1 Hardware Pass-Through:** Native 1080p60 V4L2 MJPEG stream with near-zero latency.
 
 ---
 
 ## Table of Contents
-- [Canopi — Canon Ultra-Low-Latency Field EVF \& Recorder](#canopi--canon-ultra-low-latency-field-evf--recorder)
+- [BerryStream — Raspberry Pi Ultra-Low-Latency Field EVF \& Recorder](#berrystream--raspberry-pi-ultra-low-latency-field-evf--recorder)
   - [Highlights \& Hardware Compatibility](#highlights--hardware-compatibility)
   - [Table of Contents](#table-of-contents)
   - [Architecture \& Tech Stack](#architecture--tech-stack)
   - [Hardware Setup](#hardware-setup)
   - [Quick Start (One-Command Setup)](#quick-start-one-command-setup)
-    - [What `docker compose up -d` Automatically Does:](#what-runsh-automatically-does)
+    - [What `docker compose up -d` Automatically Does:](#what-docker-compose-up--d-automatically-does)
   - [iPhone USB Tethering Setup](#iphone-usb-tethering-setup)
   - [User Guide \& Features](#user-guide--features)
     - [1. Live Viewfinder Monitor](#1-live-viewfinder-monitor)
     - [2. Stream Synchronization (SYNC Button)](#2-stream-synchronization-sync-button)
-    - [3. Settings (Stream Mode \& Download Format)](#3-settings-stream-mode--download-format)
+    - [3. Settings (Stream Mode, Transcoding & Download Format)](#3-settings-stream-mode-transcoding--download-format)
     - [4. High-Framerate Recording (FHD 60p)](#4-high-framerate-recording-fhd-60p)
     - [5. Recordings Gallery](#5-recordings-gallery)
     - [6. Saving Directly to iPhone Photos / Camera Roll](#6-saving-directly-to-iphone-photos--camera-roll)
@@ -58,8 +58,8 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 [ go2rtc Core (:1984) ] ──────────┐
       │ (Raw MJPEG Stream)        │ (Zero-copy MJPEG dump)
       ▼                           ▼
-[ Mobile Safari PWA ]      [ Canopi Python Controller (:8000) ]
-(iPhone 12 OLED Display)          │
+[ Mobile Safari PWA ]      [ BerryStream Python Controller (:8000) ]
+(iPhone OLED Display)             │
                                   ├─► Background FFmpeg Transcoder (libx264, 60fps)
                                   ├─► Sequential FIFO Transcode Queue
                                   ├─► Heartbeat Watchdog & 5s Power Recovery
@@ -68,7 +68,7 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 
 - **Streaming Core (`go2rtc`):** High-performance Go streaming core running in Docker, passing raw V4L2 MJPEG packets directly from `/dev/video0` over HTTP with zero transcoding delay.
 - **Controller & API Server (`server.py`):** Multi-threaded Python server managing real-time MKV dumps, background sequential transcoding, live progress tracking, watchdog heartbeats, and settings storage.
-- **Client App (`web/index.html`):** Pure HTML5/CSS/JavaScript PWA optimized for Mobile Safari and OLED displays, featuring zero third-party dependencies, hardware decoding, and native iOS Web Share API integration.
+- **Client App (`web/index.html`):** Pure HTML5/CSS/JavaScript PWA optimized for Mobile Safari and OLED displays, featuring custom BerryStream Home Screen icon, zero third-party dependencies, hardware decoding, and native iOS Web Share API integration.
 
 ---
 
@@ -84,15 +84,15 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 
 ## Quick Start (One-Command Setup)
 
-Setting up Canopi on a freshly installed Raspberry Pi OS Lite Bookworm (64bit) (Debian/Ubuntu) requires the following commands:
+Setting up BerryStream on a freshly installed Raspberry Pi OS Lite Bookworm (64bit) (Debian/Ubuntu) requires the following commands:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install git -y
-git clone https://github.com/domi-fresh/canopi.git
-cd canopi
+git clone https://github.com/domi-fresh/BerryStream.git
+cd BerryStream
 docker compose up -d # This may take a couple of minutes due to initial setup
-# docker logs -f canopi # if one wants to inspect the docker logs
+# docker logs -f berrystream # if one wants to inspect the docker logs
 ```
 
 ### What `docker compose up -d` Automatically Does:
@@ -100,9 +100,9 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 2. Installs required host dependencies (`usbmuxd`, `libimobiledevice`, `v4l-utils`).
 3. Installs Docker and the Docker Compose plugin (if not already installed).
 4. Enables the Docker daemon to start automatically on system boot.
-5. Configures and enables a systemd service (`canopi.service`) ensuring the container auto-launches on boot.
+5. Configures and enables a systemd service (`berrystream.service`) ensuring the container auto-launches on boot.
 6. Automatically applies a safe moderate overclock (`1.2GHz CPU`, `500MHz GPU`, `over_voltage=2`) in `config.txt` if a Raspberry Pi Zero 2W is detected.
-7. Builds the container and starts Canopi in detached mode.
+7. Builds the container and starts BerryStream in detached mode.
 
 ---
 
@@ -116,7 +116,7 @@ docker compose up -d # This may take a couple of minutes due to initial setup
    http://172.20.10.2:8000
    ```
    
-> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch Canopi as a borderless, full-screen OLED monitor and use it like an app.
+> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch BerryStream as a borderless, full-screen OLED monitor with the custom BerryStream lens-shutter icon!
 
 ---
 
@@ -157,10 +157,11 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 - **Real-Time Progress & ETA:** Clips currently encoding display an animated green progress bar with live completion percentage and remaining time estimate (e.g., `Encoding (45%) • 12s left`).
 - **Sequential Queuing:** Clips waiting in line behind an active transcode display `Encoding • Queued...` with zero CPU overload.
 - **In-Browser Playback:** Tap **PLAY** on any ready clip to view it in an instant full-screen playback modal.
+- **Batch / Single Transcoding:** If any clips were recorded with auto-transcode disabled, tap **CONVERT** on individual cards or **CONVERT ALL** in the header to transcode them on demand.
 
 ### 6. Saving Directly to iPhone Photos / Camera Roll
 - Tap **SAVE** on any clip card.
-- Instead of downloading to generic files, Canopi invokes the native **iOS Share Sheet**.
+- Instead of downloading to generic files, BerryStream invokes the native **iOS Share Sheet**.
 - The share sheet presents **Save Video**, which saves the `.mp4` file directly into your iPhone's **Apple Photos app (Camera Roll)**.
 - Once saved or dismissed, the sheet slides down and you remain seamlessly in the gallery.
 
@@ -173,13 +174,13 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 
 ## Automated Failsafes & Reliability
 
-Canopi is built specifically for field operation where battery depletion, cables being snagged, and power cuts happen:
+BerryStream is built specifically for field operation where battery depletion, cables being snagged, and power cuts happen:
 
 ### Phone Death & Cable Disconnect Watchdog
 - While recording, the iPhone transmits a lightweight heartbeat ping to `/api/record/ping` every 2 seconds.
 - The backend runs a continuous watchdog thread. If the iPhone battery dies, the phone crashes, or the USB cable is unplugged for **more than 5 seconds**, the watchdog automatically:
   1. Issues `SIGINT` to FFmpeg to cleanly close the `.mkv` container headers without file corruption.
-  2. Enqueues the clip for thumbnail generation and MP4 transcoding.
+  2. Enqueues the clip for thumbnail generation and MP4 transcoding (if auto-transcode is enabled).
   3. Guarantees that all footage up to the disconnection is safely preserved.
 
 ### App-Switch & Screen-Lock Auto-Save
@@ -196,13 +197,13 @@ Canopi is built specifically for field operation where battery depletion, cables
 - If the Raspberry Pi loses power unexpectedly or the container restarts mid-transcode, a background reconciliation worker scans the storage directory every **5 seconds**.
 - Detects any `.mkv` files that lack a matching `.mp4` file.
 - Purges any truncated, corrupt `.tmp.mp4` leftover files.
-- Automatically feeds the orphaned raw clips back into the transcoding queue to finish encoding without manual intervention.
+- Automatically feeds the orphaned raw clips back into the transcoding queue to finish encoding when automatic transcoding is active.
 
 ---
 
 ## Docker Management Commands
 
-Canopi runs as a native Docker Compose project:
+BerryStream runs as a native Docker Compose project:
 
 ```bash
 # View live container logs
@@ -245,7 +246,7 @@ docker compose up -d --build
 ## Project Structure
 
 ```
-canopi/
+BerryStream/
 ├── docker-compose.yml       # Production Docker deployment definition
 ├── Dockerfile               # Alpine-based container image with go2rtc & FFmpeg
 ├── entrypoint.sh            # Container init launching go2rtc and Python server
@@ -258,5 +259,10 @@ canopi/
 │   ├── mp4/                 # Transcoded web-safe MP4 videos
 │   └── settings.json        # Persistent user settings configuration
 └── web/
+    ├── apple-touch-icon.png # iOS Home Screen app icon (180x180)
+    ├── favicon.ico          # Browser tab icon
+    ├── favicon.png          # High-resolution PNG favicon
+    ├── icon-192.png         # Web app manifest icon (192x192)
+    ├── icon-512.png         # Web app manifest icon (512x512)
     └── index.html           # Full-screen Mobile Safari PWA client interface
 ```
