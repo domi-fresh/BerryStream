@@ -449,7 +449,7 @@
               <div class="card-meta">${item.size_mb} MB • ${item.ready ? 'Ready' : 'Encoding...'}</div>
               <div class="card-actions">
                 <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
-                <a class="btn-dl ${item.ready ? '' : 'btn-disabled'}" href="${item.mp4}" download>SAVE</a>
+                <button class="btn-dl ${item.ready ? '' : 'btn-disabled'}" onclick="saveToPhone(this, '${item.mp4}', '${item.id}.mp4')">SAVE</button>
                 <button class="btn-del" onclick="deleteRecording('${item.id}', '${item.raw_name}')" title="Delete Recording">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6"></polyline>
@@ -465,6 +465,45 @@
         });
       } catch (err) {
         console.error("Failed to load gallery:", err);
+      }
+    }
+
+    // Save recording directly to iPhone Photos / Camera Roll via native Share Sheet
+    async function saveToPhone(btn, url, filename) {
+      if (!url) return;
+      const originalText = btn.textContent;
+      btn.textContent = '...';
+      btn.style.pointerEvents = 'none';
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to fetch recording");
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: 'video/mp4' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: filename
+          });
+        } else {
+          // Fallback for desktop browsers
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error("Save error:", err);
+          alert("Could not save video: " + err.message);
+        }
+      } finally {
+        btn.textContent = originalText;
+        btn.style.pointerEvents = 'auto';
       }
     }
 
