@@ -7,6 +7,7 @@ import json
 import threading
 import urllib.request
 import urllib.parse
+from queue import Queue
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -68,6 +69,71 @@ start_time = 0
 last_heartbeat_time = 0
 encoding_status = {}  # { base_id: { "percent": int, "eta_text": str } }
 
+transcode_queue = Queue()
+queued_files = set()
+queued_lock = threading.Lock()
+
+def enqueue_recording(raw_filename):
+    """Thread-safe enqueueing: prevents duplicate queue entries."""
+    with queued_lock:
+        if raw_filename not in queued_files:
+            queued_files.add(raw_filename)
+            transcode_queue.put(raw_filename)
+            print(f"Enqueued for transcoding: {raw_filename} (Queue size: {transcode_queue.qsize()})")
+
+def transcode_worker_loop():
+    """Sequential consumer worker: strictly processes transcodes one by one to avoid CPU starvation."""
+    while True:
+        raw_filename = transcode_queue.get()
+        try:
+            process_recording(raw_filename)
+        except Exception as e:
+            print(f"Error processing {raw_filename}: {e}")
+        finally:
+            with queued_lock:
+                queued_files.discard(raw_filename)
+            transcode_queue.task_done()
+
+# Start background sequential transcode worker
+threading.Thread(target=transcode_worker_loop, daemon=True).start()
+
+def reconciliation_worker_loop():
+    """Background recovery: checks for orphaned/untranscoded MKVs every 5s (e.g. after power loss) and enqueues them."""
+    while True:
+        time.sleep(5.0)
+        try:
+            if os.path.exists(REC_DIR):
+                for f in sorted(os.listdir(REC_DIR)):
+                    if f.endswith(".mkv"):
+                        # Skip if actively being recorded to by the camera
+                        if f == current_raw_file:
+                            continue
+
+                        base = os.path.splitext(f)[0]
+                        mp4_final = os.path.join(MP4_DIR, f"{base}.mp4")
+                        mp4_temp = os.path.join(MP4_DIR, f"{base}.tmp.mp4")
+
+                        # If MP4 does not exist yet, enqueue for processing
+                        if not os.path.exists(mp4_final):
+                            with queued_lock:
+                                already_queued = f in queued_files
+                            if not already_queued:
+                                # Clean up any abandoned corrupt .tmp.mp4 left by a power loss or crash
+                                if os.path.exists(mp4_temp):
+                                    try:
+                                        os.remove(mp4_temp)
+                                        print(f"Removed orphaned temp file: {mp4_temp}")
+                                    except Exception:
+                                        pass
+
+                                print(f"Reconciliation: Enqueueing unfinished recording {f}")
+                                enqueue_recording(f)
+        except Exception as e:
+            print(f"Reconciliation error: {e}")
+
+# Start 5-second background recovery reconciliation loop
+threading.Thread(target=reconciliation_worker_loop, daemon=True).start()
+
 def set_low_priority():
     """Sets lowest process scheduling priority so background ffmpeg never starves go2rtc."""
     try:
@@ -76,7 +142,7 @@ def set_low_priority():
         pass
 
 def stop_recording_internal(reason="manual"):
-    """Thread-safe recording stop & finalize: sends SIGINT and starts transcoding."""
+    """Thread-safe recording stop & finalize: sends SIGINT and enqueues for sequential transcoding."""
     global current_process, current_raw_file
     if current_process and current_process.poll() is None:
         finished_file = current_raw_file
@@ -91,7 +157,7 @@ def stop_recording_internal(reason="manual"):
         current_raw_file = None
 
         if finished_file:
-            threading.Thread(target=process_recording, args=(finished_file,), daemon=True).start()
+            enqueue_recording(finished_file)
         return finished_file
     return None
 
@@ -267,8 +333,21 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                     mp4_size = round(os.path.getsize(mp4_path) / (1024 * 1024), 1) if mp4_ready else None
                     raw_size = round(os.path.getsize(raw_path) / (1024 * 1024), 1)
 
-                    is_encoding = base in encoding_status
+                    with queued_lock:
+                        is_in_queue = f in queued_files
+                    is_active_encode = base in encoding_status
+                    is_encoding = is_active_encode or is_in_queue
                     enc_info = encoding_status.get(base, None)
+
+                    if is_active_encode and enc_info:
+                        progress = enc_info["percent"]
+                        eta_text = enc_info["eta_text"]
+                    elif is_in_queue:
+                        progress = 0
+                        eta_text = "Queued..."
+                    else:
+                        progress = 100 if mp4_ready else 0
+                        eta_text = ""
 
                     items.append({
                         "id": base,
@@ -282,8 +361,8 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                         "mkv": f"/media/raw/{base}.mkv",
                         "ready": mp4_ready,
                         "encoding": is_encoding,
-                        "progress": enc_info["percent"] if is_encoding else (100 if mp4_ready else 0),
-                        "eta_text": enc_info["eta_text"] if is_encoding else ""
+                        "progress": progress,
+                        "eta_text": eta_text
                     })
             self._send_json({"items": items})
 
@@ -293,6 +372,9 @@ class CanopiHandler(SimpleHTTPRequestHandler):
             if not clip_id or not re.match(r"^evf_[\w-]+$", clip_id):
                 self._send_json({"status": "error", "message": "Invalid clip ID"})
                 return
+
+            with queued_lock:
+                queued_files.discard(f"{clip_id}.mkv")
 
             # Clean up all associated assets for this recording from disk
             deleted = False

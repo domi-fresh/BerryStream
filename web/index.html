@@ -795,7 +795,9 @@
               statusText = 'Ready';
             } else if (item.encoding) {
               displaySize = `${item.raw_size_mb} MB`;
-              statusText = `Encoding (${item.progress}%) • ${item.eta_text}`;
+              statusText = item.progress > 0 
+                ? `Encoding (${item.progress}%) • ${item.eta_text}` 
+                : (item.eta_text ? `Encoding • ${item.eta_text}` : 'Encoding...');
             } else {
               displaySize = `${item.raw_size_mb} MB`;
               statusText = 'Encoding...';
@@ -810,7 +812,7 @@
           card.innerHTML = `
             ${item.thumb 
               ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
-              : `<div class="card-thumb">${item.encoding ? 'ENCODING ' + item.progress + '%' : 'PROCESSING...'}</div>`}
+              : `<div class="card-thumb">${item.encoding ? (item.progress > 0 ? 'ENCODING ' + item.progress + '%' : (item.eta_text || 'PROCESSING...').toUpperCase()) : 'PROCESSING...'}</div>`}
             <div class="card-body">
               <div class="card-title">${displayName}</div>
               <div class="card-meta">${displaySize} • ${statusText}</div>
