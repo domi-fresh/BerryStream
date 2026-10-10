@@ -96,6 +96,12 @@
       padding: 12px 22px;
     }
 
+    #sync-btn {
+      bottom: env(safe-area-inset-bottom, 18px);
+      left: env(safe-area-inset-left, 18px);
+      padding: 12px 20px;
+    }
+
     /* Full-screen Gallery Overlay */
     #gallery-view {
       position: fixed;
@@ -212,6 +218,8 @@
       <span id="rec-text">REC</span>
     </button>
 
+    <button id="sync-btn" class="ctrl-btn" onclick="syncStream()">SYNC</button>
+
     <button id="files-btn" class="ctrl-btn" onclick="openGallery()">GALLERY</button>
 
     <img id="evf-feed" alt="Live EVF Stream">
@@ -271,6 +279,13 @@
       hud.textContent = "USB LINK • LIVE";
       hud.classList.remove('hud-alert');
     };
+
+    // Explicit Session Sync (Universal cross-browser reset)
+    function syncStream() {
+      try { window.stop(); } catch(e){}
+      if (streamImg) streamImg.src = "";
+      window.location.replace(`/?t=${Date.now()}`);
+    }
 
     // Clean Session Navigation (Tears down Safari socket pools & decoders)
     function openGallery() {
