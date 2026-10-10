@@ -44,12 +44,14 @@ def process_recording(raw_filename):
         thumb_path
     ], preexec_fn=set_low_priority)
 
-    # 2. Transcode to web-safe MP4 using a temp file first (restricted to 2 threads and nice 19)
+    # 2. Transcode to web-safe MP4 at 60 fps (matching EVF stream rate, restricted to 2 threads and nice 19)
     res = subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-threads", "2",
+        "-r", "60",
         "-i", raw_path,
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+        "-r", "60",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         mp4_temp
@@ -79,6 +81,7 @@ class CanopiHandler(SimpleHTTPRequestHandler):
 
                 cmd = [
                     "ffmpeg", "-hide_banner", "-loglevel", "error",
+                    "-framerate", "60",
                     "-i", "http://127.0.0.1:1984/api/stream.mjpeg?src=evf",
                     "-c:v", "copy",
                     filepath
