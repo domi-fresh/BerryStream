@@ -124,19 +124,29 @@
     }
     .gallery-grid {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 12px;
-      padding: 16px 0;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      padding: 16px 0 60px 0;
+      align-content: start;
+    }
+    @media (orientation: landscape) {
+      .gallery-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
     }
     .card {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
       overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
     }
     .card-thumb {
       width: 100%;
@@ -146,43 +156,47 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #666;
-      font-size: 11px;
-    }
-    .card-body {
-      padding: 8px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .card-title {
+      color: #777;
       font-size: 11px;
       font-weight: 600;
-      color: #eee;
+    }
+    .card-body {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .card-meta { font-size: 10px; color: #888; }
+    .card-meta { font-size: 11px; color: #aaa; }
     .card-actions {
       display: flex;
-      gap: 6px;
-      margin-top: 6px;
+      gap: 8px;
+      margin-top: 4px;
     }
     .btn-play, .btn-dl {
       flex: 1;
-      padding: 6px 0;
+      padding: 8px 0;
       border: none;
-      border-radius: 6px;
-      font-size: 11px;
+      border-radius: 8px;
+      font-size: 12px;
       font-weight: 700;
       text-align: center;
       text-decoration: none;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .btn-play { background: #00ff66; color: #000; }
-    .btn-dl { background: rgba(255, 255, 255, 0.15); color: #fff; }
-    .btn-disabled { opacity: 0.4; pointer-events: none; }
+    .btn-dl { background: rgba(255, 255, 255, 0.2); color: #fff; }
+    .btn-disabled { opacity: 0.35; pointer-events: none; }
 
     /* Video Player Overlay */
     #player-modal {
