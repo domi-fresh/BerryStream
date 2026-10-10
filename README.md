@@ -1,20 +1,31 @@
 # Canopi — Canon Ultra-Low-Latency Field EVF & Recorder
 
-Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for video cameras (e.g., Canon EOS series). It turns a Raspberry Pi 4, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
+Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for video cameras (e.g., Canon EOS series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
+
+---
+
+## Highlights & Hardware Compatibility
+- **One-Command Setup:** Clone the repo and run `./run.sh` — everything is configured, installed, and launched automatically in Docker.
+- **Auto-Start on Boot:** Preconfigures a systemd service so Canopi starts automatically on every boot.
+- **Cross-Compatible Hardware:** Out of the box support for:
+  - **Raspberry Pi 5**
+  - **Raspberry Pi 4**
+  - **Raspberry Pi 3** (Model B / B+)
+  - **Raspberry Pi Zero 2 & Zero 2W**
+- **100% Docker-Based:** Clean containerized architecture on Alpine Linux with zero host pollution.
+- **Direct 1:1 Hardware Pass-Through:** Native 1080p60 V4L2 MJPEG stream with near-zero latency.
 
 ---
 
 ## Table of Contents
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [Hardware Setup](#hardware-setup)
-- [Software Prerequisites & USB Tethering](#software-prerequisites--usb-tethering)
-- [Quick Start](#quick-start)
-  - [Option A: Docker Compose (Recommended)](#option-a-docker-compose-recommended)
-  - [Option B: Bare Metal Standalone](#option-b-bare-metal-standalone)
+- [Quick Start (One-Command Setup)](#quick-start-one-command-setup)
+- [iPhone USB Tethering Setup](#iphone-usb-tethering-setup)
 - [User Guide & Features](#user-guide--features)
   - [1. Live Viewfinder Monitor](#1-live-viewfinder-monitor)
   - [2. Stream Synchronization (SYNC Button)](#2-stream-synchronization-sync-button)
-  - [3. Settings (Stream Presets & Download Format)](#3-settings-stream-presets--download-format)
+  - [3. Settings (Stream Mode & Download Format)](#3-settings-stream-mode--download-format)
   - [4. High-Framerate Recording (FHD 60p)](#4-high-framerate-recording-fhd-60p)
   - [5. Recordings Gallery](#5-recordings-gallery)
   - [6. Saving Directly to iPhone Photos / Camera Roll](#6-saving-directly-to-iphone-photos--camera-roll)
@@ -24,6 +35,7 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
   - [App-Switch & Screen-Lock Auto-Save](#app-switch--screen-lock-auto-save)
   - [Sequential Transcode Queue (No CPU Starvation)](#sequential-transcode-queue-no-cpu-starvation)
   - [Power-Loss & Crash Recovery Loop](#power-loss--crash-recovery-loop)
+- [Docker Management Commands](#docker-management-commands)
 - [Backend API Reference](#backend-api-reference)
 - [Project Structure](#project-structure)
 
@@ -44,101 +56,76 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 [ Mobile Safari PWA ]      [ Canopi Python Controller (:8000) ]
 (iPhone 12 OLED Display)          │
                                   ├─► Background FFmpeg Transcoder (libx264, 60fps)
-                                  ├─► Heartbeat Watchdog & Recovery Worker
+                                  ├─► Sequential FIFO Transcode Queue
+                                  ├─► Heartbeat Watchdog & 5s Power Recovery
                                   └─► Settings & Gallery Storage (/app/recordings)
 ```
 
-- **Video Capture & Streaming:** `go2rtc` acts as the ultra-fast streaming engine, delivering uncompressed V4L2 MJPEG frames directly from `/dev/video0` over HTTP without re-encoding overhead.
-- **Backend Controller:** Python (`server.py`) manages real-time stream dumps, background FFmpeg transcoding, progress tracking, client heartbeats, and storage management.
-- **Frontend Client:** Pure HTML/CSS/JavaScript PWA (`web/index.html`) optimized for Mobile Safari and OLED displays, featuring zero third-party dependencies, hardware decoding, and native iOS Web Share API integration.
+- **Streaming Core (`go2rtc`):** High-performance Go streaming core running in Docker, passing raw V4L2 MJPEG packets directly from `/dev/video0` over HTTP with zero transcoding delay.
+- **Controller & API Server (`server.py`):** Multi-threaded Python server managing real-time MKV dumps, background sequential transcoding, live progress tracking, watchdog heartbeats, and settings storage.
+- **Client App (`web/index.html`):** Pure HTML5/CSS/JavaScript PWA optimized for Mobile Safari and OLED displays, featuring zero third-party dependencies, hardware decoding, and native iOS Web Share API integration.
 
 ---
 
 ## Hardware Setup
 
 1. **Camera Connection:** Connect your camera's clean HDMI output to the UGREEN USB HDMI Video Capture Card (MacroSilicon MS2109 or MS2130 chip).
-2. **Raspberry Pi 4 Input:** Plug the capture card into one of the blue **USB 3.0** ports on the Raspberry Pi 4 (assigned to `/dev/video0`).
-3. **iPhone Tether:** Connect your iPhone to one of the Pi 4's **USB 2.0** ports using a standard Lightning or USB-C cable.
+2. **Raspberry Pi Input:**
+   - **Pi 4 / Pi 5:** Plug the capture card into a blue **USB 3.0** port (`/dev/video0`).
+   - **Pi 3 / Pi Zero 2W:** Plug the capture card into a USB port (or micro-USB OTG adapter).
+3. **iPhone Tether:** Connect your iPhone to one of the Pi's available USB ports using a standard Lightning or USB-C cable.
 
 ---
 
-## Software Prerequisites & USB Tethering
+## Quick Start (One-Command Setup)
 
-### 1. Install Host Dependencies
-On the Raspberry Pi 4 host operating system:
-```bash
-sudo apt update
-sudo apt install -y usbmuxd libimobiledevice6 libimobiledevice-utils v4l-utils
-```
-
-### 2. Enable iPhone USB Ethernet (`ipheth`)
-1. On your iPhone, navigate to **Settings > Personal Hotspot** and turn it **ON**.
-2. Select **USB Only** when prompted on the iPhone.
-3. Tap **Trust This Computer** when prompted and enter your passcode.
-4. Verify on the Pi that an Ethernet interface (typically `usb0` or `eth1`) is assigned an IP in the `172.20.10.x` subnet:
-   ```bash
-   ip a show dev usb0
-   # The Pi will typically receive 172.20.10.2, with the iPhone at 172.20.10.1
-   ```
-
----
-
-## Quick Start
-
-### Option A: Docker Compose (Recommended)
-
-Canopi is fully containerized with Alpine Linux, bundling `go2rtc`, Python 3, FFmpeg, and V4L2 utilities:
+Setting up Canopi on a freshly installed Raspberry Pi OS (Debian/Ubuntu) requires only two commands:
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-repo/canopi.git
 cd canopi
-
-# Start the services in detached mode
-docker compose up -d
-```
-
-To view live service logs:
-```bash
-docker compose logs -f
-```
-
-To stop:
-```bash
-docker compose down
-```
-
-### Option B: Bare Metal Standalone
-
-If you prefer to run directly on the host without Docker:
-```bash
-chmod +x run.sh
 ./run.sh
 ```
+
+### What `./run.sh` Automatically Does:
+1. Detects your hardware architecture (`arm64`, `armv7l`, or `x86_64`).
+2. Installs required host dependencies (`usbmuxd`, `libimobiledevice`, `v4l-utils`).
+3. Installs Docker and the Docker Compose plugin (if not already installed).
+4. Enables the Docker daemon to start automatically on system boot.
+5. Configures and enables a systemd service (`canopi.service`) ensuring the container auto-launches on boot.
+6. Builds the Alpine-based multi-arch container and starts Canopi in detached mode.
+
+---
+
+## iPhone USB Tethering Setup
+
+1. On your iPhone, navigate to **Settings > Personal Hotspot** and turn it **ON**.
+2. Select **USB Only** when prompted on the iPhone.
+3. Tap **Trust This Computer** when prompted and enter your iPhone passcode.
+4. Open Mobile Safari on your iPhone and go to:
+   ```
+   http://172.20.10.2:8000
+   ```
+   *(Or the IP shown in the `./run.sh` summary banner)*.
+
+> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch Canopi as a borderless, full-screen OLED monitor.
 
 ---
 
 ## User Guide & Features
 
-Open Safari on your iPhone and navigate to:
-```
-http://172.20.10.2:8000
-```
-> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch Canopi as a borderless, full-screen OLED monitor.
-
 ### 1. Live Viewfinder Monitor
 - Displays the camera stream with near-zero latency (~40–60ms).
 - Top-left HUD displays connection health (`USB LINK • LIVE`).
-- Screen wake lock automatically keeps your iPhone display awake while monitoring.
+- Automatic screen wake lock keeps your iPhone OLED display illuminated while monitoring.
 
 ### 2. Stream Synchronization (SYNC Button)
-- Located at the **bottom-left** corner of the EVF screen.
-- If network jitter or browser backgrounding ever causes stream delay, tapping **SYNC** immediately halts lingering socket handles, flushes browser buffers, and performs an instant fresh reconnection to the camera feed.
+- Located in the **bottom-left** corner of the EVF screen.
+- If network jitter or browser backgrounding ever causes stream delay, tapping **SYNC** immediately halts lingering socket handles, flushes browser buffers, and performs an instant fresh reconnection to the live camera feed.
 
-### 3. Settings (Stream Presets & Download Format)
+### 3. Settings (Stream Mode & Download Format)
 - Tap the **Gear Icon** button below the HUD in the top-left corner to open settings:
-  - **Stream Settings:** Displays active capture mode:
-    - `1080p 60fps (Native Full HD)`: Direct 1:1 hardware pass-through from the HDMI capture card for maximum sharpness with zero software scaling latency or CPU load.
+  - **Stream Settings:** Displays active capture mode (`1080p 60fps Native Full HD` hardware pass-through for zero latency and zero CPU load).
   - **Download Settings:** Choose between download and gallery display formats:
     - `MP4` *(Default: Transcoded H.264, compact file size, native iPhone Photos compatibility)*.
     - `MKV` *(Raw uncompressed MJPEG camera dump for maximum archival quality)*.
@@ -188,13 +175,36 @@ Canopi is built specifically for field operation where battery depletion, cables
 ### Sequential Transcode Queue (No CPU Starvation)
 - Transcode tasks are queued into a single-consumer FIFO queue (`queue.Queue`).
 - Taking multiple takes back-to-back processes clips strictly **one at a time**.
-- FFmpeg runs under `nice +19` with a strict limit of `-threads 2`, ensuring `go2rtc` and live capture maintain dedicated CPU cores on the Raspberry Pi 4 at all times.
+- FFmpeg runs under `nice +19` with a strict limit of `-threads 2`, ensuring `go2rtc` and live capture maintain dedicated CPU cores on the Raspberry Pi at all times.
 
 ### Power-Loss & Crash Recovery Loop
-- If the Raspberry Pi 4 loses power unexpectedly or the container restarts mid-transcode, a background reconciliation worker scans the storage directory every **5 seconds**.
+- If the Raspberry Pi loses power unexpectedly or the container restarts mid-transcode, a background reconciliation worker scans the storage directory every **5 seconds**.
 - Detects any `.mkv` files that lack a matching `.mp4` file.
 - Purges any truncated, corrupt `.tmp.mp4` leftover files.
 - Automatically feeds the orphaned raw clips back into the transcoding queue to finish encoding without manual intervention.
+
+---
+
+## Docker Management Commands
+
+Canopi runs as a native Docker Compose project:
+
+```bash
+# View live container logs
+docker compose logs -f
+
+# Check container status
+docker compose ps
+
+# Restart services
+docker compose restart
+
+# Stop services
+docker compose down
+
+# Rebuild container after code changes
+docker compose up -d --build
+```
 
 ---
 
@@ -225,7 +235,7 @@ canopi/
 ├── entrypoint.sh            # Container init launching go2rtc and Python server
 ├── go2rtc.yaml              # Default V4L2 stream configuration for go2rtc
 ├── README.md                # Comprehensive project documentation
-├── run.sh                   # Standalone host launcher script
+├── run.sh                   # All-in-one automated installer & boot launcher
 ├── server.py                # Python controller, API server, and recovery worker
 ├── recordings/              # Mounted volume for recorded media assets
 │   ├── thumbs/              # Generated JPEG card thumbnails
