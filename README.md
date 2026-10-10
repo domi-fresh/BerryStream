@@ -1,19 +1,19 @@
 # Canopi — Canon Ultra-Low-Latency Field EVF & Recorder
 
-Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for video cameras (e.g., Canon EOS series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
+Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for digital cameras (e.g., Canon EOS R/M series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
 
 ---
 
 ## Highlights & Hardware Compatibility
-- **One-Command Setup:** Clone the repo and run `./run.sh` — everything is configured, installed, and launched automatically in Docker.
+- **One-Command Setup:** Clone the repo and run `cd canopi && docker compose up -d` — everything is configured, installed, and launched automatically in Docker.
 - **Auto-Start on Boot:** Preconfigures a systemd service so Canopi starts automatically on every boot.
 - **Cross-Compatible Hardware:** Out of the box support for:
-  - **Raspberry Pi 5**
-  - **Raspberry Pi 4**
+  - **Raspberry Pi 5** (*recommended*)
+  - **Raspberry Pi 4** (*recommended*)
   - **Raspberry Pi 3** (Model B / B+)
-  - **Raspberry Pi Zero 2W** (I/O seems to be a bottleneck though)
-- **Automated Pi Zero 2W Tuning:** `./run.sh` detects Pi Zero 2W board and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
-- **100% Docker-Based:** Clean containerized architecture on Alpine Linux with zero host pollution.
+  - **Raspberry Pi Zero 2W** (*I/O seems to be a bottleneck though -> **720p60** limition for smooth streaming*)
+- **Automated Pi Zero 2W Tuning:** detects Pi Zero 2W board and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
+- **100% Docker-Based:** Clean containerized with zero host pollution.
 - **Direct 1:1 Hardware Pass-Through:** Native 1080p60 V4L2 MJPEG stream with near-zero latency.
 
 ---
@@ -25,7 +25,7 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
   - [Architecture \& Tech Stack](#architecture--tech-stack)
   - [Hardware Setup](#hardware-setup)
   - [Quick Start (One-Command Setup)](#quick-start-one-command-setup)
-    - [What `./run.sh` Automatically Does:](#what-runsh-automatically-does)
+    - [What `docker compose up -d` Automatically Does:](#what-runsh-automatically-does)
   - [iPhone USB Tethering Setup](#iphone-usb-tethering-setup)
   - [User Guide \& Features](#user-guide--features)
     - [1. Live Viewfinder Monitor](#1-live-viewfinder-monitor)
@@ -77,7 +77,7 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 1. **Camera Connection:** Connect your camera's clean HDMI output to the UGREEN USB HDMI Video Capture Card (MacroSilicon MS2109 or MS2130 chip).
 2. **Raspberry Pi Input:**
    - **Pi 4 / Pi 5:** Plug the capture card into a blue **USB 3.0** port (`/dev/video0`).
-   - **Pi 3 / Pi Zero 2W:** Plug the capture card into a USB port (or micro-USB OTG adapter).
+   - **Pi 3 / Pi Zero 2W:** Install a micro-USB splitter. Plug the capture card into a USB port.
 3. **iPhone Tether:** Connect your iPhone to one of the Pi's available USB ports using a standard Lightning or USB-C cable.
 
 ---
@@ -95,14 +95,14 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 # docker logs -f canopi # if one wants to inspect the docker logs
 ```
 
-### What `./run.sh` Automatically Does:
+### What `docker compose up -d` Automatically Does:
 1. Detects your hardware architecture (`arm64`, `armv7l`, or `x86_64`).
 2. Installs required host dependencies (`usbmuxd`, `libimobiledevice`, `v4l-utils`).
 3. Installs Docker and the Docker Compose plugin (if not already installed).
 4. Enables the Docker daemon to start automatically on system boot.
 5. Configures and enables a systemd service (`canopi.service`) ensuring the container auto-launches on boot.
 6. Automatically applies a safe moderate overclock (`1.2GHz CPU`, `500MHz GPU`, `over_voltage=2`) in `config.txt` if a Raspberry Pi Zero 2W is detected.
-7. Builds the Alpine-based multi-arch container and starts Canopi in detached mode.
+7. Builds the container and starts Canopi in detached mode.
 
 ---
 
@@ -115,9 +115,8 @@ docker compose up -d # This may take a couple of minutes due to initial setup
    ```
    http://172.20.10.2:8000
    ```
-   *(Or the IP shown in the `./run.sh` summary banner)*.
-
-> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch Canopi as a borderless, full-screen OLED monitor.
+   
+> **Tip:** In Safari, tap the **Share** button and select **Add to Home Screen** to launch Canopi as a borderless, full-screen OLED monitor and use it like an app.
 
 ---
 
