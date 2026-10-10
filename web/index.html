@@ -213,8 +213,6 @@
     </button>
 
     <button id="files-btn" class="ctrl-btn" onclick="openGallery()">GALLERY</button>
-
-    <img id="evf-feed" src="" alt="Live EVF Stream">
   </div>
 
   <!-- Gallery View -->
@@ -233,10 +231,12 @@
   </div>
 
   <script>
-    const streamImg = document.getElementById('evf-feed');
+    const viewportContainer = document.getElementById('viewport-container');
     const hud = document.getElementById('hud');
     const recBtn = document.getElementById('rec-btn');
     const recText = document.getElementById('rec-text');
+    let streamImg = null;
+    let reconnectTimeout = null;
     let isRecording = false;
     let recTimer = null;
     let secondsElapsed = 0;
@@ -244,25 +244,51 @@
     function getStreamUrl() {
       return `${window.location.protocol}//${window.location.hostname}:1984/api/stream.mjpeg?src=evf`;
     }
-    function startLiveStream() {
-      streamImg.src = `${getStreamUrl()}&t=${Date.now()}`;
-    }
+
     function pauseLiveStream() {
-      streamImg.src = ""; // Frees network & decoding pipeline
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+      if (streamImg) {
+        streamImg.onerror = null;
+        streamImg.onload = null;
+        streamImg.src = "about:blank"; // Frees network & decoding pipeline in WebKit
+        streamImg.remove();
+        streamImg = null;
+      }
+    }
+
+    function startLiveStream() {
+      pauseLiveStream();
+
+      const img = document.createElement('img');
+      img.id = 'evf-feed';
+      img.alt = 'Live EVF Stream';
+
+      img.onerror = () => {
+        if (document.getElementById('gallery-view').classList.contains('active')) return;
+        hud.textContent = "SIGNAL LOST • RETRYING";
+        hud.classList.add('hud-alert');
+        if (!reconnectTimeout) {
+          reconnectTimeout = setTimeout(() => {
+            reconnectTimeout = null;
+            startLiveStream();
+          }, 1000);
+        }
+      };
+
+      img.onload = () => {
+        hud.textContent = "USB LINK • LIVE";
+        hud.classList.remove('hud-alert');
+      };
+
+      img.src = `${getStreamUrl()}&t=${Date.now()}`;
+      viewportContainer.appendChild(img);
+      streamImg = img;
     }
 
     startLiveStream();
-
-    streamImg.onerror = () => {
-      if (document.getElementById('gallery-view').classList.contains('active')) return;
-      hud.textContent = "SIGNAL LOST • RETRYING";
-      hud.classList.add('hud-alert');
-      setTimeout(() => { startLiveStream(); }, 1000);
-    };
-    streamImg.onload = () => {
-      hud.textContent = "USB LINK • LIVE";
-      hud.classList.remove('hud-alert');
-    };
 
     // Keep screen awake
     async function requestWakeLock() {
@@ -297,57 +323,79 @@
     }
 
     // Gallery Actions
-
     let galleryPollTimer = null;
+    let lastGalleryJson = "";
 
-    function openGallery() {
-      pauseLiveStream();
-      document.getElementById('gallery-view').classList.add('active');
-      loadGallery();
-      // Poll every 2 seconds while gallery is open so new clips pop up as "Ready"
+    function startGalleryPolling() {
       if (!galleryPollTimer) {
         galleryPollTimer = setInterval(loadGallery, 2000);
       }
     }
 
-    function closeGallery() {
-      document.getElementById('gallery-view').classList.remove('active');
+    function stopGalleryPolling() {
       if (galleryPollTimer) {
         clearInterval(galleryPollTimer);
         galleryPollTimer = null;
       }
+    }
+
+    function openGallery() {
+      pauseLiveStream();
+      document.getElementById('gallery-view').classList.add('active');
+      lastGalleryJson = "";
+      loadGallery();
+      startGalleryPolling();
+    }
+
+    function closeGallery() {
+      if (playerModal.classList.contains('active')) {
+        closePlayer();
+      }
+      document.getElementById('gallery-view').classList.remove('active');
+      stopGalleryPolling();
       startLiveStream();
     }
 
     async function loadGallery() {
       const grid = document.getElementById('grid');
-      const res = await fetch('/api/gallery');
-      const data = await res.json();
-      grid.innerHTML = "";
+      try {
+        const res = await fetch('/api/gallery');
+        if (!res.ok) return;
+        const data = await res.json();
+        const jsonStr = JSON.stringify(data.items);
+        if (jsonStr === lastGalleryJson) {
+          return; // Skip re-rendering and re-fetching thumbnails if list has not changed
+        }
+        lastGalleryJson = jsonStr;
 
-      if (data.items.length === 0) {
-        grid.innerHTML = "<div style='color:#777; grid-column: 1/-1; text-align:center; padding-top:40px;'>No clips recorded yet</div>";
-        return;
-      }
+        grid.innerHTML = "";
 
-      data.items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          ${item.thumb 
-            ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
-            : `<div class="card-thumb">PROCESSING...</div>`}
-          <div class="card-body">
-            <div class="card-title">${item.raw_name}</div>
-            <div class="card-meta">${item.size_mb} MB • ${item.ready ? 'Ready' : 'Encoding...'}</div>
-            <div class="card-actions">
-              <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
-              <a class="btn-dl ${item.ready ? '' : 'btn-disabled'}" href="${item.mp4}" download>SAVE</a>
+        if (data.items.length === 0) {
+          grid.innerHTML = "<div style='color:#777; grid-column: 1/-1; text-align:center; padding-top:40px;'>No clips recorded yet</div>";
+          return;
+        }
+
+        data.items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            ${item.thumb 
+              ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
+              : `<div class="card-thumb">PROCESSING...</div>`}
+            <div class="card-body">
+              <div class="card-title">${item.raw_name}</div>
+              <div class="card-meta">${item.size_mb} MB • ${item.ready ? 'Ready' : 'Encoding...'}</div>
+              <div class="card-actions">
+                <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
+                <a class="btn-dl ${item.ready ? '' : 'btn-disabled'}" href="${item.mp4}" download>SAVE</a>
+              </div>
             </div>
-          </div>
-        `;
-        grid.appendChild(card);
-      });
+          `;
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        console.error("Failed to load gallery:", err);
+      }
     }
 
     // Inline iOS Video Player
@@ -355,6 +403,7 @@
     const videoPlayer = document.getElementById('video-player');
 
     function playVideo(url) {
+      stopGalleryPolling(); // Pause gallery polling while video is playing
       videoPlayer.src = url;
       playerModal.classList.add('active');
       videoPlayer.play();
@@ -362,8 +411,10 @@
 
     function closePlayer() {
       videoPlayer.pause();
-      videoPlayer.src = "";
+      videoPlayer.removeAttribute('src');
+      videoPlayer.load(); // Forces iOS WebKit to release decoder and media buffers
       playerModal.classList.remove('active');
+      startGalleryPolling(); // Resume gallery polling
     }
   </script>
 </body>

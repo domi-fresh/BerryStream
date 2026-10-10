@@ -20,6 +20,13 @@ current_process = None
 current_raw_file = None
 start_time = 0
 
+def set_low_priority():
+    """Sets lowest process scheduling priority so background ffmpeg never starves go2rtc."""
+    try:
+        os.nice(19)
+    except Exception:
+        pass
+
 def process_recording(raw_filename):
     """Background worker: creates thumbnail and transcodes to iOS MP4 cleanly."""
     raw_path = os.path.join(REC_DIR, raw_filename)
@@ -35,17 +42,18 @@ def process_recording(raw_filename):
         "-vframes", "1",
         "-vf", "scale=480:-1",
         thumb_path
-    ])
+    ], preexec_fn=set_low_priority)
 
-    # 2. Transcode to web-safe MP4 using a temp file first
+    # 2. Transcode to web-safe MP4 using a temp file first (restricted to 2 threads and nice 19)
     res = subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
+        "-threads", "2",
         "-i", raw_path,
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         mp4_temp
-    ])
+    ], preexec_fn=set_low_priority)
 
     if res.returncode == 0 and os.path.exists(mp4_temp):
         os.rename(mp4_temp, mp4_final)
