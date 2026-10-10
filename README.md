@@ -137,12 +137,8 @@ http://172.20.10.2:8000
 
 ### 3. Settings (Stream Presets & Download Format)
 - Tap the **Gear Icon** button below the HUD in the top-left corner to open settings:
-  - **Stream Settings:** Select between hardware-supported capture presets:
-    - `1080p 60fps (Full HD)` *(Default)*
-    - `1080p 30fps (Full HD)`
-    - `720p 60fps (HD)`
-    - `720p 30fps (HD)`
-    *(Changing preset dynamically reconfigures `go2rtc` and restarts the stream).*
+  - **Stream Settings:** Displays active capture mode:
+    - `1080p 60fps (Native Full HD)`: Direct 1:1 hardware pass-through from the HDMI capture card for maximum sharpness with zero software scaling latency or CPU load.
   - **Download Settings:** Choose between download and gallery display formats:
     - `MP4` *(Default: Transcoded H.264, compact file size, native iPhone Photos compatibility)*.
     - `MKV` *(Raw uncompressed MJPEG camera dump for maximum archival quality)*.

@@ -21,10 +21,7 @@ os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(MP4_DIR, exist_ok=True)
 
 STREAM_PRESETS = {
-    "1080p60": {"width": 1920, "height": 1080, "fps": 60, "label": "1080p 60fps (Full HD)"},
-    "1080p30": {"width": 1920, "height": 1080, "fps": 30, "label": "1080p 30fps (Full HD)"},
-    "720p60":  {"width": 1280, "height": 720,  "fps": 60, "label": "720p 60fps (HD)"},
-    "720p30":  {"width": 1280, "height": 720,  "fps": 30, "label": "720p 30fps (HD)"},
+    "1080p60": {"width": 1920, "height": 1080, "fps": 60, "label": "1080p 60fps (Native Full HD)"},
 }
 
 DEFAULT_SETTINGS = {

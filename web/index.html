@@ -436,32 +436,11 @@
         <div class="section-title">Stream Settings</div>
         <div class="section-desc">HDMI Capture Resolution & Frame Rate</div>
         <div class="options-group" id="stream-presets-group">
-          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p60')">
-            <input type="radio" class="option-radio" name="stream_preset" value="1080p60">
+          <label class="option-item selected" onclick="onSettingChange('stream_preset', '1080p60')">
+            <input type="radio" class="option-radio" name="stream_preset" value="1080p60" checked>
             <div class="option-text">
               <span class="option-label">1080p 60fps</span>
-              <span class="option-sub">Full HD (Default)</span>
-            </div>
-          </label>
-          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p30')">
-            <input type="radio" class="option-radio" name="stream_preset" value="1080p30">
-            <div class="option-text">
-              <span class="option-label">1080p 30fps</span>
-              <span class="option-sub">Full HD</span>
-            </div>
-          </label>
-          <label class="option-item" onclick="onSettingChange('stream_preset', '720p60')">
-            <input type="radio" class="option-radio" name="stream_preset" value="720p60">
-            <div class="option-text">
-              <span class="option-label">720p 60fps</span>
-              <span class="option-sub">HD</span>
-            </div>
-          </label>
-          <label class="option-item" onclick="onSettingChange('stream_preset', '720p30')">
-            <input type="radio" class="option-radio" name="stream_preset" value="720p30">
-            <div class="option-text">
-              <span class="option-label">720p 30fps</span>
-              <span class="option-sub">HD</span>
+              <span class="option-sub">Native Camera Pass-Through (Zero Latency)</span>
             </div>
           </label>
         </div>
