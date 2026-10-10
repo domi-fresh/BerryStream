@@ -65,6 +65,7 @@ def apply_stream_to_go2rtc(preset_key):
 current_process = None
 current_raw_file = None
 start_time = 0
+last_heartbeat_time = 0
 encoding_status = {}  # { base_id: { "percent": int, "eta_text": str } }
 
 def set_low_priority():
@@ -73,6 +74,41 @@ def set_low_priority():
         os.nice(19)
     except Exception:
         pass
+
+def stop_recording_internal(reason="manual"):
+    """Thread-safe recording stop & finalize: sends SIGINT and starts transcoding."""
+    global current_process, current_raw_file
+    if current_process and current_process.poll() is None:
+        finished_file = current_raw_file
+        print(f"Stopping recording ({reason}): {finished_file}")
+        current_process.send_signal(signal.SIGINT)
+        try:
+            current_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            current_process.kill()
+
+        current_process = None
+        current_raw_file = None
+
+        if finished_file:
+            threading.Thread(target=process_recording, args=(finished_file,), daemon=True).start()
+        return finished_file
+    return None
+
+def recording_watchdog_loop():
+    """Background watchdog: automatically saves & finalizes recording if phone dies or disconnects."""
+    global current_process, last_heartbeat_time
+    HEARTBEAT_TIMEOUT = 5.0
+    while True:
+        time.sleep(1.0)
+        if current_process and current_process.poll() is None:
+            now = time.time()
+            if last_heartbeat_time > 0 and (now - last_heartbeat_time > HEARTBEAT_TIMEOUT):
+                print(f"Watchdog: Phone heartbeat lost ({now - last_heartbeat_time:.1f}s > {HEARTBEAT_TIMEOUT}s). Auto-saving recording...")
+                stop_recording_internal(reason="phone_heartbeat_lost")
+
+# Start background failsafe watchdog
+threading.Thread(target=recording_watchdog_loop, daemon=True).start()
 
 def parse_ffmpeg_time(time_str):
     try:
@@ -200,23 +236,18 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                 ]
                 current_process = subprocess.Popen(cmd)
                 start_time = time.time()
+                last_heartbeat_time = time.time()
                 self._send_json({"status": "started", "file": current_raw_file})
             else:
                 self._send_json({"status": "already_recording", "file": current_raw_file})
 
+        elif parsed.path == "/api/record/ping":
+            last_heartbeat_time = time.time()
+            self._send_json({"status": "pong"})
+
         elif parsed.path == "/api/record/stop":
-            if current_process and current_process.poll() is None:
-                current_process.send_signal(signal.SIGINT)
-                try:
-                    current_process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    current_process.kill()
-
-                finished_file = current_raw_file
-                current_process = None
-                current_raw_file = None
-
-                threading.Thread(target=process_recording, args=(finished_file,), daemon=True).start()
+            finished_file = stop_recording_internal(reason="user_stop")
+            if finished_file:
                 self._send_json({"status": "processing", "file": finished_file})
             else:
                 self._send_json({"status": "not_recording"})

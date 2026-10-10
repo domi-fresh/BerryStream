@@ -518,6 +518,7 @@
 
     let isRecording = false;
     let recTimer = null;
+    let heartbeatTimer = null;
     let secondsElapsed = 0;
     let galleryPollTimer = null;
     let lastGalleryJson = "";
@@ -631,11 +632,62 @@
 
     // Clean Session Navigation (Tears down Safari socket pools & decoders)
     function openGallery() {
+      if (isRecording) {
+        stopRecordingFailsafe();
+      }
       window.location.replace('/?view=gallery');
     }
 
     function closeGallery() {
       window.location.replace('/');
+    }
+
+    // Failsafe auto-stop when backgrounded, app switched, or phone navigated away
+    function stopRecordingFailsafe() {
+      if (!isRecording) return;
+      isRecording = false;
+      clearInterval(recTimer);
+      stopHeartbeat();
+      recTimer = null;
+      recBtn.classList.remove('recording');
+      recText.textContent = 'REC';
+
+      try {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/record/stop');
+        } else {
+          fetch('/api/record/stop', { keepalive: true });
+        }
+      } catch (e) {}
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && isRecording) {
+        stopRecordingFailsafe();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      if (isRecording) {
+        stopRecordingFailsafe();
+      }
+    });
+
+    function startHeartbeat() {
+      if (!heartbeatTimer) {
+        heartbeatTimer = setInterval(() => {
+          if (isRecording) {
+            fetch('/api/record/ping').catch(() => {});
+          }
+        }, 2000);
+      }
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
     }
 
     // Keep screen awake
@@ -656,6 +708,7 @@
           const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
           const secs = String(secondsElapsed % 60).padStart(2, '0');
           recText.textContent = `${mins}:${secs}`;
+          startHeartbeat();
           if (!recTimer) {
             recTimer = setInterval(() => {
               secondsElapsed++;
@@ -677,6 +730,7 @@
           isRecording = true;
           recBtn.classList.add('recording');
           secondsElapsed = 0;
+          startHeartbeat();
           recTimer = setInterval(() => {
             secondsElapsed++;
             const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
@@ -689,6 +743,7 @@
         await res.json();
         isRecording = false;
         clearInterval(recTimer);
+        stopHeartbeat();
         recTimer = null;
         recBtn.classList.remove('recording');
         recText.textContent = 'REC';
