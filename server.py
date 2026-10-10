@@ -11,10 +11,12 @@ from queue import Queue
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-REC_DIR = "/app/recordings"
-THUMB_DIR = "/app/recordings/thumbs"
-MP4_DIR = "/app/recordings/mp4"
+REC_DIR = os.environ.get("REC_DIR", "/app/recordings")
+THUMB_DIR = os.path.join(REC_DIR, "thumbs")
+MP4_DIR = os.path.join(REC_DIR, "mp4")
 SETTINGS_FILE = os.path.join(REC_DIR, "settings.json")
+WEB_DIR = os.environ.get("WEB_DIR", "/app/web" if os.path.exists("/app/web") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
+GO2RTC_CONFIG = os.environ.get("GO2RTC_CONFIG", "/app/go2rtc.yaml")
 
 os.makedirs(REC_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
@@ -29,7 +31,8 @@ STREAM_PRESETS = {
 
 DEFAULT_SETTINGS = {
     "stream_preset": "720p60",
-    "download_format": "mp4"  # 'mp4' or 'mkv'
+    "download_format": "mp4",  # 'mp4' or 'mkv'
+    "auto_transcode": True     # True = transcode immediately; False = leave as raw MKV in field
 }
 
 def load_settings():
@@ -127,20 +130,73 @@ encoding_status = {}  # { base_id: { "percent": int, "eta_text": str } }
 transcode_queue = Queue()
 queued_files = set()
 queued_lock = threading.Lock()
+manual_transcodes = set()
+manual_lock = threading.Lock()
 
-def enqueue_recording(raw_filename):
+def enqueue_recording(raw_filename, manual=False):
     """Thread-safe enqueueing: prevents duplicate queue entries."""
+    if manual:
+        with manual_lock:
+            manual_transcodes.add(raw_filename)
     with queued_lock:
         if raw_filename not in queued_files:
             queued_files.add(raw_filename)
             transcode_queue.put(raw_filename)
             print(f"Enqueued for transcoding: {raw_filename} (Queue size: {transcode_queue.qsize()})")
 
+def enqueue_orphaned_recordings(manual=False):
+    """Checks for orphaned/untranscoded MKVs and enqueues them for sequential processing."""
+    if not os.path.exists(REC_DIR):
+        return []
+
+    enqueued = []
+    try:
+        for f in sorted(os.listdir(REC_DIR)):
+            if f.endswith(".mkv"):
+                # Skip if actively being recorded to by the camera
+                if f == current_raw_file:
+                    continue
+
+                base = os.path.splitext(f)[0]
+                mp4_final = os.path.join(MP4_DIR, f"{base}.mp4")
+                mp4_temp = os.path.join(MP4_DIR, f"{base}.tmp.mp4")
+
+                # If MP4 does not exist yet, enqueue for processing
+                if not os.path.exists(mp4_final):
+                    with queued_lock:
+                        already_queued = f in queued_files
+                    if not already_queued:
+                        # Clean up any abandoned corrupt .tmp.mp4 left by a power loss or crash
+                        if os.path.exists(mp4_temp):
+                            try:
+                                os.remove(mp4_temp)
+                                print(f"Removed orphaned temp file: {mp4_temp}")
+                            except Exception:
+                                pass
+
+                        print(f"Enqueueing orphaned recording: {f}")
+                        enqueue_recording(f, manual=manual)
+                        enqueued.append(f)
+    except Exception as e:
+        print(f"Error checking orphaned recordings: {e}")
+    return enqueued
+
 def transcode_worker_loop():
     """Sequential consumer worker: strictly processes transcodes one by one to avoid CPU starvation."""
     while True:
         raw_filename = transcode_queue.get()
         try:
+            with manual_lock:
+                is_manual = raw_filename in manual_transcodes
+                manual_transcodes.discard(raw_filename)
+
+            settings = load_settings()
+            # If auto_transcode is OFF and not explicitly requested manually,
+            # skip processing this queued item to preserve battery in the field.
+            if not is_manual and not settings.get("auto_transcode", True):
+                print(f"Skipping transcode for {raw_filename}: auto_transcode is OFF")
+                continue
+
             process_recording(raw_filename)
         except Exception as e:
             print(f"Error processing {raw_filename}: {e}")
@@ -153,36 +209,13 @@ def transcode_worker_loop():
 threading.Thread(target=transcode_worker_loop, daemon=True).start()
 
 def reconciliation_worker_loop():
-    """Background recovery: checks for orphaned/untranscoded MKVs every 5s (e.g. after power loss) and enqueues them."""
+    """Background recovery: checks for orphaned/untranscoded MKVs every 5s and enqueues them if auto_transcode is ON."""
     while True:
         time.sleep(5.0)
         try:
-            if os.path.exists(REC_DIR):
-                for f in sorted(os.listdir(REC_DIR)):
-                    if f.endswith(".mkv"):
-                        # Skip if actively being recorded to by the camera
-                        if f == current_raw_file:
-                            continue
-
-                        base = os.path.splitext(f)[0]
-                        mp4_final = os.path.join(MP4_DIR, f"{base}.mp4")
-                        mp4_temp = os.path.join(MP4_DIR, f"{base}.tmp.mp4")
-
-                        # If MP4 does not exist yet, enqueue for processing
-                        if not os.path.exists(mp4_final):
-                            with queued_lock:
-                                already_queued = f in queued_files
-                            if not already_queued:
-                                # Clean up any abandoned corrupt .tmp.mp4 left by a power loss or crash
-                                if os.path.exists(mp4_temp):
-                                    try:
-                                        os.remove(mp4_temp)
-                                        print(f"Removed orphaned temp file: {mp4_temp}")
-                                    except Exception:
-                                        pass
-
-                                print(f"Reconciliation: Enqueueing unfinished recording {f}")
-                                enqueue_recording(f)
+            settings = load_settings()
+            if settings.get("auto_transcode", True):
+                enqueue_orphaned_recordings()
         except Exception as e:
             print(f"Reconciliation error: {e}")
 
@@ -197,7 +230,7 @@ def set_low_priority():
         pass
 
 def stop_recording_internal(reason="manual"):
-    """Thread-safe recording stop & finalize: sends SIGINT and enqueues for sequential transcoding."""
+    """Thread-safe recording stop & finalize: sends SIGINT and conditionally enqueues for sequential transcoding."""
     global current_process, current_raw_file
     if current_process and current_process.poll() is None:
         finished_file = current_raw_file
@@ -212,7 +245,11 @@ def stop_recording_internal(reason="manual"):
         current_raw_file = None
 
         if finished_file:
-            enqueue_recording(finished_file)
+            settings = load_settings()
+            if settings.get("auto_transcode", True):
+                enqueue_recording(finished_file)
+            else:
+                print(f"Auto-transcode is OFF: Leaving {finished_file} as raw MKV")
         return finished_file
     return None
 
@@ -260,6 +297,8 @@ def process_recording(raw_filename):
     mp4_temp = os.path.join(MP4_DIR, f"{base_name}.tmp.mp4")
     mp4_final = os.path.join(MP4_DIR, f"{base_name}.mp4")
 
+    popen_kwargs = {"preexec_fn": set_low_priority} if os.name != "nt" else {}
+
     # 1. Generate thumbnail
     subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
@@ -267,7 +306,7 @@ def process_recording(raw_filename):
         "-vframes", "1",
         "-vf", "scale=480:-1",
         thumb_path
-    ], preexec_fn=set_low_priority)
+    ], **popen_kwargs)
 
     # 2. Get total clip duration for progress calculation
     total_duration = get_file_duration(raw_path)
@@ -300,7 +339,7 @@ def process_recording(raw_filename):
             stderr=subprocess.DEVNULL,
             text=True,
             bufsize=1,
-            preexec_fn=set_low_priority
+            **popen_kwargs
         )
 
         for line in proc.stdout:
@@ -332,7 +371,7 @@ def process_recording(raw_filename):
 
 class CanopiHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory="/app/web", **kwargs)
+        super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def do_GET(self):
         global current_process, current_raw_file, start_time
@@ -369,57 +408,85 @@ class CanopiHandler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/record/stop":
             finished_file = stop_recording_internal(reason="user_stop")
             if finished_file:
-                self._send_json({"status": "processing", "file": finished_file})
+                settings = load_settings()
+                is_auto = settings.get("auto_transcode", True)
+                self._send_json({
+                    "status": "processing" if is_auto else "saved_raw",
+                    "file": finished_file,
+                    "auto_transcode": is_auto
+                })
             else:
                 self._send_json({"status": "not_recording"})
 
         elif parsed.path == "/api/settings":
             self._send_json({"settings": load_settings(), "presets": STREAM_PRESETS})
 
+        elif parsed.path == "/api/transcode":
+            query = parse_qs(parsed.query)
+            clip_id = query.get("id", [None])[0]
+            if clip_id:
+                if not re.match(r"^evf_[\w-]+$", clip_id):
+                    self._send_json({"status": "error", "message": "Invalid clip ID"})
+                    return
+                raw_filename = f"{clip_id}.mkv"
+                raw_path = os.path.join(REC_DIR, raw_filename)
+                if not os.path.exists(raw_path):
+                    self._send_json({"status": "error", "message": "File not found"})
+                    return
+                enqueue_recording(raw_filename, manual=True)
+                self._send_json({"status": "enqueued", "id": clip_id, "file": raw_filename})
+            else:
+                enqueued = enqueue_orphaned_recordings(manual=True)
+                self._send_json({"status": "enqueued_all", "count": len(enqueued), "files": enqueued})
+
         elif parsed.path == "/api/gallery":
             items = []
-            for f in sorted(os.listdir(REC_DIR), reverse=True):
-                if f.endswith(".mkv"):
-                    base = os.path.splitext(f)[0]
-                    mp4_path = os.path.join(MP4_DIR, f"{base}.mp4")
-                    raw_path = os.path.join(REC_DIR, f)
-                    mp4_ready = os.path.exists(mp4_path)
-                    thumb_ready = os.path.exists(os.path.join(THUMB_DIR, f"{base}.jpg"))
-                    mp4_size = round(os.path.getsize(mp4_path) / (1024 * 1024), 1) if mp4_ready else None
-                    raw_size = round(os.path.getsize(raw_path) / (1024 * 1024), 1)
+            settings = load_settings()
+            auto_transcode = settings.get("auto_transcode", True)
+            if os.path.exists(REC_DIR):
+                for f in sorted(os.listdir(REC_DIR), reverse=True):
+                    if f.endswith(".mkv"):
+                        base = os.path.splitext(f)[0]
+                        mp4_path = os.path.join(MP4_DIR, f"{base}.mp4")
+                        raw_path = os.path.join(REC_DIR, f)
+                        mp4_ready = os.path.exists(mp4_path)
+                        thumb_ready = os.path.exists(os.path.join(THUMB_DIR, f"{base}.jpg"))
+                        mp4_size = round(os.path.getsize(mp4_path) / (1024 * 1024), 1) if mp4_ready else None
+                        raw_size = round(os.path.getsize(raw_path) / (1024 * 1024), 1) if os.path.exists(raw_path) else 0
 
-                    with queued_lock:
-                        is_in_queue = f in queued_files
-                    is_active_encode = base in encoding_status
-                    is_encoding = is_active_encode or is_in_queue
-                    enc_info = encoding_status.get(base, None)
+                        with queued_lock:
+                            is_in_queue = f in queued_files
+                        is_active_encode = base in encoding_status
+                        is_encoding = is_active_encode or is_in_queue
+                        enc_info = encoding_status.get(base, None)
 
-                    if is_active_encode and enc_info:
-                        progress = enc_info["percent"]
-                        eta_text = enc_info["eta_text"]
-                    elif is_in_queue:
-                        progress = 0
-                        eta_text = "Queued..."
-                    else:
-                        progress = 100 if mp4_ready else 0
-                        eta_text = ""
+                        if is_active_encode and enc_info:
+                            progress = enc_info["percent"]
+                            eta_text = enc_info["eta_text"]
+                        elif is_in_queue:
+                            progress = 0
+                            eta_text = "Queued..."
+                        else:
+                            progress = 100 if mp4_ready else 0
+                            eta_text = ""
 
-                    items.append({
-                        "id": base,
-                        "raw_name": f,
-                        "mp4_name": f"{base}.mp4",
-                        "size_mb": mp4_size if mp4_ready else raw_size,
-                        "mp4_size_mb": mp4_size,
-                        "raw_size_mb": raw_size,
-                        "thumb": f"/media/thumb/{base}.jpg" if thumb_ready else None,
-                        "mp4": f"/media/mp4/{base}.mp4" if mp4_ready else None,
-                        "mkv": f"/media/raw/{base}.mkv",
-                        "ready": mp4_ready,
-                        "encoding": is_encoding,
-                        "progress": progress,
-                        "eta_text": eta_text
-                    })
-            self._send_json({"items": items})
+                        items.append({
+                            "id": base,
+                            "raw_name": f,
+                            "mp4_name": f"{base}.mp4",
+                            "size_mb": mp4_size if mp4_ready else raw_size,
+                            "mp4_size_mb": mp4_size,
+                            "raw_size_mb": raw_size,
+                            "thumb": f"/media/thumb/{base}.jpg" if thumb_ready else None,
+                            "mp4": f"/media/mp4/{base}.mp4" if mp4_ready else None,
+                            "mkv": f"/media/raw/{base}.mkv",
+                            "ready": mp4_ready,
+                            "encoding": is_encoding,
+                            "progress": progress,
+                            "eta_text": eta_text,
+                            "untranscoded": (not mp4_ready and not is_encoding)
+                        })
+            self._send_json({"items": items, "auto_transcode": auto_transcode})
 
         elif parsed.path == "/api/record/delete":
             query = parse_qs(parsed.query)
@@ -554,9 +621,46 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                 apply_stream_to_go2rtc(data["stream_preset"])
             if "download_format" in data and data["download_format"] in ["mp4", "mkv"]:
                 new_settings["download_format"] = data["download_format"]
+            if "auto_transcode" in data:
+                new_settings["auto_transcode"] = bool(data["auto_transcode"])
 
             saved = save_settings(new_settings)
+
+            # If auto_transcode is ON, immediately enqueue any orphaned MKVs
+            if saved.get("auto_transcode", True):
+                enqueue_orphaned_recordings()
+
             self._send_json({"status": "saved", "settings": saved, "presets": STREAM_PRESETS})
+
+        elif parsed.path == "/api/transcode":
+            length = int(self.headers.get("Content-Length", 0))
+            clip_id = None
+            if length > 0:
+                try:
+                    body = self.rfile.read(length)
+                    data = json.loads(body.decode("utf-8"))
+                    clip_id = data.get("id")
+                except Exception:
+                    pass
+            if not clip_id:
+                query = parse_qs(parsed.query)
+                clip_id = query.get("id", [None])[0]
+
+            if clip_id:
+                if not re.match(r"^evf_[\w-]+$", clip_id):
+                    self._send_json({"status": "error", "message": "Invalid clip ID"})
+                    return
+                raw_filename = f"{clip_id}.mkv"
+                raw_path = os.path.join(REC_DIR, raw_filename)
+                if not os.path.exists(raw_path):
+                    self._send_json({"status": "error", "message": "File not found"})
+                    return
+                enqueue_recording(raw_filename, manual=True)
+                self._send_json({"status": "enqueued", "id": clip_id, "file": raw_filename})
+            else:
+                enqueued = enqueue_orphaned_recordings(manual=True)
+                self._send_json({"status": "enqueued_all", "count": len(enqueued), "files": enqueued})
+
         else:
             self.do_GET()
 

@@ -398,6 +398,109 @@
       font-size: 11px;
       color: #888;
     }
+
+    /* Transcoding Switch Toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      cursor: pointer;
+      touch-action: manipulation;
+      gap: 16px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .toggle-row:active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .toggle-row.active {
+      border-color: rgba(0, 255, 102, 0.4);
+      background: rgba(0, 255, 102, 0.06);
+    }
+    .toggle-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+    .toggle-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .status-pill {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #888;
+      text-transform: uppercase;
+      transition: background 0.2s, color 0.2s;
+    }
+    .status-pill.active {
+      background: rgba(0, 255, 102, 0.25);
+      color: #00ff66;
+    }
+    .toggle-desc {
+      font-size: 11px;
+      color: #888;
+      line-height: 1.4;
+    }
+    .ios-switch {
+      position: relative;
+      width: 50px;
+      height: 30px;
+      flex-shrink: 0;
+    }
+    .ios-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+    .ios-switch-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 30px;
+    }
+    .ios-switch-slider:before {
+      position: absolute;
+      content: "";
+      height: 24px;
+      width: 24px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #fff;
+      transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+    }
+    .ios-switch input:checked + .ios-switch-slider {
+      background-color: #00ff66;
+    }
+    .ios-switch input:checked + .ios-switch-slider:before {
+      transform: translateX(20px);
+    }
+    .btn-convert {
+      background: #ffaa00;
+      color: #000;
+    }
+    .btn-convert:active {
+      background: #e69900;
+    }
   </style>
 </head>
 <body>
@@ -467,7 +570,30 @@
         </div>
       </div>
 
-      <!-- Section 2: Download Settings -->
+      <!-- Section 2: Transcoding Settings -->
+      <div class="settings-section">
+        <div class="section-title">Transcoding</div>
+        <div class="section-desc">Background MP4 Conversion & Field Battery Optimization</div>
+        <div class="options-group">
+          <label class="toggle-row" id="auto-transcode-row">
+            <div class="toggle-text">
+              <div class="toggle-header">
+                <span class="toggle-label">Automatic Transcoding</span>
+                <span id="transcode-status-pill" class="status-pill active">ON</span>
+              </div>
+              <span class="toggle-desc" id="auto-transcode-desc">
+                Transcode recordings to MP4 immediately after capture. Turn OFF in the field to save Pi battery; turning back ON will automatically transcode all pending MKV files.
+              </span>
+            </div>
+            <div class="ios-switch">
+              <input type="checkbox" id="auto-transcode-checkbox" onchange="onAutoTranscodeToggle(this.checked)">
+              <span class="ios-switch-slider"></span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section 3: Download Settings -->
       <div class="settings-section">
         <div class="section-title">Download Settings</div>
         <div class="section-desc">File Format & Gallery Display</div>
@@ -495,7 +621,10 @@
   <div id="gallery-view">
     <div class="gallery-header">
       <span style="color:#fff; font-size:18px; font-weight:700;">RECORDINGS</span>
-      <button class="ctrl-btn" style="position:static; padding:8px 16px;" onclick="closeGallery()">BACK TO EVF</button>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button id="convert-all-btn" class="ctrl-btn" style="position:static; padding:8px 14px; background:#ffaa00; color:#000; display:none;" onclick="transcodeAllOrphans()">CONVERT ALL</button>
+        <button class="ctrl-btn" style="position:static; padding:8px 16px;" onclick="closeGallery()">BACK TO EVF</button>
+      </div>
     </div>
     <div class="gallery-grid" id="grid"></div>
   </div>
@@ -523,10 +652,11 @@
     let galleryPollTimer = null;
     let lastGalleryJson = "";
 
-    // Application Settings (Stream Presets & Download Format)
+    // Application Settings (Stream Presets, Download Format, Auto Transcode)
     let currentSettings = {
       stream_preset: "720p60",
-      download_format: "mp4"
+      download_format: "mp4",
+      auto_transcode: true
     };
 
     async function loadSettings() {
@@ -556,6 +686,43 @@
         const item = radio.closest('.option-item');
         if (item) item.classList.toggle('selected', isMatch);
       });
+
+      const autoTranscodeCheckbox = document.getElementById('auto-transcode-checkbox');
+      const transcodeStatusPill = document.getElementById('transcode-status-pill');
+      const autoTranscodeRow = document.getElementById('auto-transcode-row');
+      const isAuto = currentSettings.auto_transcode !== false;
+
+      if (autoTranscodeCheckbox) autoTranscodeCheckbox.checked = isAuto;
+      if (transcodeStatusPill) {
+        transcodeStatusPill.textContent = isAuto ? 'ON' : 'OFF';
+        transcodeStatusPill.classList.toggle('active', isAuto);
+      }
+      if (autoTranscodeRow) {
+        autoTranscodeRow.classList.toggle('active', isAuto);
+      }
+    }
+
+    async function onAutoTranscodeToggle(enabled) {
+      currentSettings.auto_transcode = enabled;
+      localStorage.setItem('canopi_settings', JSON.stringify(currentSettings));
+      updateSettingsUI();
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_transcode: enabled })
+        });
+        const data = await res.json();
+        if (data.settings) {
+          currentSettings = { ...currentSettings, ...data.settings };
+          updateSettingsUI();
+        }
+        // Force gallery refresh so any newly queued transcodes reflect immediately
+        lastGalleryJson = "";
+      } catch(e) {
+        console.error("Failed to update auto transcode setting:", e);
+      }
     }
 
     function openSettings() {
@@ -779,6 +946,7 @@
 
     async function loadGallery() {
       const grid = document.getElementById('grid');
+      const convertAllBtn = document.getElementById('convert-all-btn');
       try {
         const res = await fetch('/api/gallery');
         if (!res.ok) return;
@@ -792,8 +960,19 @@
         grid.innerHTML = "";
 
         if (data.items.length === 0) {
+          if (convertAllBtn) convertAllBtn.style.display = 'none';
           grid.innerHTML = "<div style='color:#777; grid-column: 1/-1; text-align:center; padding-top:40px;'>No clips recorded yet</div>";
           return;
+        }
+
+        const untranscodedCount = data.items.filter(i => i.untranscoded).length;
+        if (convertAllBtn) {
+          if (untranscodedCount > 0) {
+            convertAllBtn.textContent = `CONVERT ALL (${untranscodedCount})`;
+            convertAllBtn.style.display = 'inline-flex';
+          } else {
+            convertAllBtn.style.display = 'none';
+          }
         }
 
         data.items.forEach(item => {
@@ -813,19 +992,36 @@
                 : (item.eta_text ? `Encoding • ${item.eta_text}` : 'Encoding...');
             } else {
               displaySize = `${item.raw_size_mb} MB`;
-              statusText = 'Encoding...';
+              statusText = 'Not Transcoded';
             }
           }
 
           const saveUrl = isMp4 ? item.mp4 : item.mkv;
           const canSave = isMp4 ? item.ready : true;
 
+          let thumbHtml = '';
+          if (item.thumb) {
+            thumbHtml = `<img class="card-thumb" src="${item.thumb}" alt="thumb">`;
+          } else if (item.encoding) {
+            const encLabel = item.progress > 0 ? `ENCODING ${item.progress}%` : (item.eta_text || 'PROCESSING...').toUpperCase();
+            thumbHtml = `<div class="card-thumb">${encLabel}</div>`;
+          } else {
+            thumbHtml = `<div class="card-thumb" style="color:#aaa; letter-spacing:0.5px;">RAW MKV ONLY</div>`;
+          }
+
+          let actionBtnHtml = '';
+          if (item.ready) {
+            actionBtnHtml = `<button class="btn-play" onclick="playVideo('${item.mp4}')">PLAY</button>`;
+          } else if (item.encoding) {
+            actionBtnHtml = `<button class="btn-play btn-disabled" style="font-size:11px;">ENCODING...</button>`;
+          } else {
+            actionBtnHtml = `<button class="btn-play btn-convert" onclick="transcodeSingle('${item.id}', this)" title="Transcode to MP4">CONVERT</button>`;
+          }
+
           const card = document.createElement('div');
           card.className = 'card';
           card.innerHTML = `
-            ${item.thumb 
-              ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
-              : `<div class="card-thumb">${item.encoding ? (item.progress > 0 ? 'ENCODING ' + item.progress + '%' : (item.eta_text || 'PROCESSING...').toUpperCase()) : 'PROCESSING...'}</div>`}
+            ${thumbHtml}
             <div class="card-body">
               <div class="card-title">${displayName}</div>
               <div class="card-meta">${displaySize} • ${statusText}</div>
@@ -835,7 +1031,7 @@
                 </div>
               ` : ''}
               <div class="card-actions">
-                <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
+                ${actionBtnHtml}
                 <button class="btn-dl ${canSave ? '' : 'btn-disabled'}" onclick="saveToPhone(this, '${saveUrl}', '${displayName}')">SAVE</button>
                 <button class="btn-del" onclick="deleteRecording('${item.id}', '${displayName}')" title="Delete Recording">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -852,6 +1048,53 @@
         });
       } catch (err) {
         console.error("Failed to load gallery:", err);
+      }
+    }
+
+    async function transcodeSingle(id, btn) {
+      if (btn) {
+        btn.textContent = '...';
+        btn.style.pointerEvents = 'none';
+      }
+      try {
+        const res = await fetch(`/api/transcode?id=${encodeURIComponent(id)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'enqueued') {
+          lastGalleryJson = "";
+          loadGallery();
+        } else {
+          alert("Could not start transcoding: " + (data.message || "Unknown error"));
+          if (btn) {
+            btn.textContent = 'CONVERT';
+            btn.style.pointerEvents = 'auto';
+          }
+        }
+      } catch(e) {
+        console.error("Transcode single error:", e);
+        if (btn) {
+          btn.textContent = 'CONVERT';
+          btn.style.pointerEvents = 'auto';
+        }
+      }
+    }
+
+    async function transcodeAllOrphans() {
+      const btn = document.getElementById('convert-all-btn');
+      if (btn) {
+        btn.textContent = 'QUEUING...';
+        btn.style.pointerEvents = 'none';
+      }
+      try {
+        const res = await fetch('/api/transcode', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'enqueued_all') {
+          lastGalleryJson = "";
+          loadGallery();
+        }
+      } catch(e) {
+        console.error("Transcode all error:", e);
+      } finally {
+        if (btn) btn.style.pointerEvents = 'auto';
       }
     }
 

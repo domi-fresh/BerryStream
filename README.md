@@ -132,13 +132,16 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 - Located in the **bottom-left** corner of the EVF screen.
 - If network jitter or browser backgrounding ever causes stream delay, tapping **SYNC** immediately halts lingering socket handles, flushes browser buffers, and performs an instant fresh reconnection to the live camera feed.
 
-### 3. Settings (Stream Mode & Download Format)
+### 3. Settings (Stream Mode, Transcoding & Download Format)
 - Tap the **Gear Icon** button below the HUD in the top-left corner to open settings:
   - **Stream Settings:** Choose between live capture presets dynamically:
     - `720p 60fps` *(Default / Recommended for Pi Zero 2W: Smooth 60p with zero USB bus congestion)*.
     - `720p 30fps` *(Ultra-low bandwidth and maximum power saving)*.
     - `1080p 30fps` *(Full HD cinema quality with reduced USB bandwidth)*.
     - `1080p 60fps` *(Native Full HD for high-speed USB architectures like Pi 4 / Pi 5)*.
+  - **Transcoding (Battery Saving Mode):**
+    - `Automatic Transcoding (ON / Default)`: Transcodes raw MKVs to web-optimized MP4 immediately after each take completes.
+    - `Field Mode (OFF)`: Saves only the raw `.mkv` files without starting background CPU-intensive FFmpeg transcoding, maximizing battery life while in the field. Once turned back ON (e.g. at home plugged into the wall), all orphaned MKVs are automatically detected and transcoded sequentially.
   - **Download Settings:** Choose between download and gallery display formats:
     - `MP4` *(Default: Transcoded H.264, compact file size, native iPhone Photos compatibility)*.
     - `MKV` *(Raw uncompressed MJPEG camera dump for maximum archival quality)*.
@@ -227,12 +230,13 @@ docker compose up -d --build
 |---|---|---|
 | `/api/record/status` | `GET` | Returns active recording status, elapsed time, and current filename. |
 | `/api/record/start` | `GET` | Starts raw MKV recording from `go2rtc`. |
-| `/api/record/stop` | `GET / POST` | Finalizes active recording and enqueues MP4 transcode. |
+| `/api/record/stop` | `GET / POST` | Finalizes active recording and conditionally enqueues MP4 transcode if auto-transcode is enabled. |
 | `/api/record/ping` | `GET` | Heartbeat endpoint for the client watchdog. |
 | `/api/record/delete?id={id}` | `GET / POST` | Deletes raw MKV, MP4, temp files, and thumbnail from disk. |
 | `/api/gallery` | `GET` | Lists all recordings with thumbnail paths, sizes, readiness, and encoding progress. |
-| `/api/settings` | `GET` | Retrieves current settings and supported stream presets. |
-| `/api/settings` | `POST` | Updates stream presets and download formats. |
+| `/api/settings` | `GET` | Retrieves current settings (`stream_preset`, `download_format`, `auto_transcode`) and supported stream presets. |
+| `/api/settings` | `POST` | Updates stream presets, download formats, and toggles automatic transcoding. |
+| `/api/transcode` | `GET / POST` | Manually enqueues an individual recording (`?id={id}`) or all orphaned MKVs for transcoding. |
 | `/media/thumb/{file}` | `GET` | Serves preview JPEG thumbnails. |
 | `/media/mp4/{file}` | `GET` | Streams MP4 video with HTTP 206 Byte-Range support for Safari. |
 | `/media/raw/{file}` | `GET` | Downloads original raw MKV files. |
