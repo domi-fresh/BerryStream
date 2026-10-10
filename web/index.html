@@ -237,184 +237,79 @@
     const hud = document.getElementById('hud');
     const recBtn = document.getElementById('rec-btn');
     const recText = document.getElementById('rec-text');
+    const viewportContainer = document.getElementById('viewport-container');
+    const galleryView = document.getElementById('gallery-view');
+    const playerModal = document.getElementById('player-modal');
+    const videoPlayer = document.getElementById('video-player');
+
     let isRecording = false;
     let recTimer = null;
     let secondsElapsed = 0;
-
-    // Live Stream Reader Engine (fetch + AbortController + frame drop)
-    const streamBuffer = new Uint8Array(4 * 1024 * 1024);
-    let streamBufferLen = 0;
-    let streamAbortController = null;
-    let currentBlobUrl = null;
-    let isRendering = false;
-    let reconnectTimeout = null;
+    let galleryPollTimer = null;
+    let lastGalleryJson = "";
 
     function getStreamUrl() {
       return `${window.location.protocol}//${window.location.hostname}:1984/api/stream.mjpeg?src=evf`;
     }
 
-    function findSOI(buf, from, to) {
-      for (let i = from; i < to - 1; i++) {
-        if (buf[i] === 0xFF && buf[i + 1] === 0xD8) return i;
-      }
-      return -1;
+    function startLiveStream() {
+      streamImg.src = getStreamUrl();
     }
 
-    function findEOI(buf, from, to) {
-      for (let i = from; i < to - 1; i++) {
-        if (buf[i] === 0xFF && buf[i + 1] === 0xD9) return i;
-      }
-      return -1;
-    }
-
-    function renderFrame(jpegBytes) {
-      // If the browser hasn't finished painting the previous frame, drop this one to avoid lag
-      if (isRendering) return;
-      isRendering = true;
-
-      const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
-      const newUrl = URL.createObjectURL(blob);
-
-      const resetTimer = setTimeout(() => {
-        isRendering = false;
-      }, 40);
-
-      streamImg.onload = () => {
-        clearTimeout(resetTimer);
-        if (currentBlobUrl) {
-          URL.revokeObjectURL(currentBlobUrl);
+    streamImg.onerror = () => {
+      if (isGalleryView) return;
+      hud.textContent = "SIGNAL LOST • RETRYING";
+      hud.classList.add('hud-alert');
+      setTimeout(() => {
+        if (!isGalleryView) {
+          streamImg.src = `${getStreamUrl()}&t=${Date.now()}`;
         }
-        currentBlobUrl = newUrl;
-        isRendering = false;
-        hud.textContent = "USB LINK • LIVE";
-        hud.classList.remove('hud-alert');
-      };
+      }, 1000);
+    };
 
-      streamImg.onerror = () => {
-        clearTimeout(resetTimer);
-        if (currentBlobUrl) {
-          URL.revokeObjectURL(currentBlobUrl);
-        }
-        isRendering = false;
-      };
+    streamImg.onload = () => {
+      hud.textContent = "USB LINK • LIVE";
+      hud.classList.remove('hud-alert');
+    };
 
-      streamImg.src = newUrl;
+    // Clean Session Navigation (Tears down Safari socket pools & decoders)
+    function openGallery() {
+      window.location.replace('/?view=gallery');
     }
 
-    function pauseLiveStream() {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
-      // Force immediate TCP socket abort in browser networking process
-      if (streamAbortController) {
-        streamAbortController.abort();
-        streamAbortController = null;
-      }
-      if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl);
-        currentBlobUrl = null;
-      }
-      isRendering = false;
-      streamBufferLen = 0;
+    function closeGallery() {
+      window.location.replace('/');
     }
-
-    async function startLiveStream() {
-      pauseLiveStream();
-
-      streamAbortController = new AbortController();
-      const signal = streamAbortController.signal;
-
-      try {
-        const res = await fetch(`${getStreamUrl()}&t=${Date.now()}`, {
-          signal,
-          cache: 'no-store'
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        if (!res.body) throw new Error("ReadableStream not supported");
-
-        const reader = res.body.getReader();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Discard header preamble before first SOI if buffer was empty
-          if (streamBufferLen === 0) {
-            const firstSoi = findSOI(value, 0, value.length);
-            if (firstSoi === -1) continue;
-            const useful = value.slice(firstSoi);
-            streamBuffer.set(useful, 0);
-            streamBufferLen = useful.length;
-          } else {
-            if (streamBufferLen + value.length > streamBuffer.length) {
-              streamBufferLen = 0;
-              continue;
-            }
-            streamBuffer.set(value, streamBufferLen);
-            streamBufferLen += value.length;
-          }
-
-          // Discard any multipart headers between frames
-          const firstSoi = findSOI(streamBuffer, 0, streamBufferLen);
-          if (firstSoi > 0) {
-            streamBuffer.copyWithin(0, firstSoi, streamBufferLen);
-            streamBufferLen -= firstSoi;
-          }
-
-          // Scan for complete frames in buffer, always selecting the newest
-          let lastFrameStart = -1;
-          let lastFrameEnd = -1;
-          let searchPos = 0;
-
-          while (searchPos < streamBufferLen - 1) {
-            const soi = findSOI(streamBuffer, searchPos, streamBufferLen);
-            if (soi === -1) break;
-
-            const eoi = findEOI(streamBuffer, soi + 2, streamBufferLen);
-            if (eoi === -1) break;
-
-            lastFrameStart = soi;
-            lastFrameEnd = eoi + 2;
-            searchPos = lastFrameEnd; // Continue scanning for even fresher frame in this batch
-          }
-
-          // Render only the latest frame found, dropping any older completed frames
-          if (lastFrameStart !== -1 && lastFrameEnd !== -1) {
-            const frameBytes = streamBuffer.slice(lastFrameStart, lastFrameEnd);
-            renderFrame(frameBytes);
-
-            const leftover = streamBufferLen - lastFrameEnd;
-            if (leftover > 0) {
-              streamBuffer.copyWithin(0, lastFrameEnd, streamBufferLen);
-            }
-            streamBufferLen = leftover;
-          }
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return; // Clean user-initiated pause
-        console.error("Stream reader error:", err);
-        hud.textContent = "SIGNAL LOST • RETRYING";
-        hud.classList.add('hud-alert');
-        if (!document.getElementById('gallery-view').classList.contains('active')) {
-          reconnectTimeout = setTimeout(() => {
-            reconnectTimeout = null;
-            if (!document.getElementById('gallery-view').classList.contains('active')) {
-              startLiveStream();
-            }
-          }, 1000);
-        }
-      }
-    }
-
-    startLiveStream();
 
     // Keep screen awake
     async function requestWakeLock() {
       try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch(e){}
     }
     requestWakeLock();
+
+    // Sync recording status from server
+    async function syncRecordStatus() {
+      try {
+        const res = await fetch('/api/record/status');
+        const data = await res.json();
+        if (data.recording) {
+          isRecording = true;
+          recBtn.classList.add('recording');
+          secondsElapsed = data.elapsed || 0;
+          const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+          const secs = String(secondsElapsed % 60).padStart(2, '0');
+          recText.textContent = `${mins}:${secs}`;
+          if (!recTimer) {
+            recTimer = setInterval(() => {
+              secondsElapsed++;
+              const m = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+              const s = String(secondsElapsed % 60).padStart(2, '0');
+              recText.textContent = `${m}:${s}`;
+            }, 1000);
+          }
+        }
+      } catch(e) {}
+    }
 
     // Toggle Record
     async function toggleRecord() {
@@ -437,15 +332,13 @@
         await res.json();
         isRecording = false;
         clearInterval(recTimer);
+        recTimer = null;
         recBtn.classList.remove('recording');
         recText.textContent = 'REC';
       }
     }
 
     // Gallery Actions
-    let galleryPollTimer = null;
-    let lastGalleryJson = "";
-
     function startGalleryPolling() {
       if (!galleryPollTimer) {
         galleryPollTimer = setInterval(loadGallery, 2000);
@@ -457,23 +350,6 @@
         clearInterval(galleryPollTimer);
         galleryPollTimer = null;
       }
-    }
-
-    function openGallery() {
-      pauseLiveStream();
-      document.getElementById('gallery-view').classList.add('active');
-      lastGalleryJson = "";
-      loadGallery();
-      startGalleryPolling();
-    }
-
-    function closeGallery() {
-      if (playerModal.classList.contains('active')) {
-        closePlayer();
-      }
-      document.getElementById('gallery-view').classList.remove('active');
-      stopGalleryPolling();
-      startLiveStream();
     }
 
     async function loadGallery() {
@@ -519,11 +395,8 @@
     }
 
     // Inline iOS Video Player
-    const playerModal = document.getElementById('player-modal');
-    const videoPlayer = document.getElementById('video-player');
-
     function playVideo(url) {
-      stopGalleryPolling(); // Pause gallery polling while video is playing
+      stopGalleryPolling();
       videoPlayer.src = url;
       playerModal.classList.add('active');
       videoPlayer.play();
@@ -534,7 +407,25 @@
       videoPlayer.removeAttribute('src');
       videoPlayer.load(); // Forces iOS WebKit to release decoder and media buffers
       playerModal.classList.remove('active');
-      startGalleryPolling(); // Resume gallery polling
+      startGalleryPolling();
+    }
+
+    // View Router based on URL state
+    const urlParams = new URLSearchParams(window.location.search);
+    const isGalleryView = urlParams.get('view') === 'gallery';
+
+    if (isGalleryView) {
+      // In Gallery View: NEVER load the EVF stream (0 Mbps over USB link)
+      viewportContainer.style.display = 'none';
+      galleryView.classList.add('active');
+      loadGallery();
+      startGalleryPolling();
+    } else {
+      // In Live View: Show EVF with clean native hardware MJPEG decoding
+      galleryView.classList.remove('active');
+      viewportContainer.style.display = 'flex';
+      startLiveStream();
+      syncRecordStatus();
     }
   </script>
 </body>
