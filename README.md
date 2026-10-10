@@ -1,9 +1,11 @@
 # BerryStream — Raspberry Pi Ultra-Low-Latency Field EVF & Recorder
 
 BerryStream is an ultra-low-latency electronic viewfinder (EVF) monitor and recording system designed for digital cameras (e.g., Canon EOS R/M series). It turns a Raspberry Pi, a USB HDMI capture dongle (such as UGREEN), and an iPhone OLED display into a professional field monitor with **~40–60ms glass-to-glass latency** over a direct USB cable tether.
----
 
-*This project is independent and is not affiliated with, authorized, endorsed, or sponsored by Canon Inc.*
+```
+This project is independent and is not affiliated with, authorized, endorsed, or sponsored by Canon Inc.
+
+```
 ---
 
 ## Highlights & Hardware Compatibility
