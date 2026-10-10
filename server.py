@@ -21,11 +21,14 @@ os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(MP4_DIR, exist_ok=True)
 
 STREAM_PRESETS = {
+    "720p60":  {"width": 1280, "height": 720,  "fps": 60, "label": "720p 60fps (Recommended for Pi Zero 2W)"},
+    "720p30":  {"width": 1280, "height": 720,  "fps": 30, "label": "720p 30fps (Ultra-Low Bandwidth)"},
+    "1080p30": {"width": 1920, "height": 1080, "fps": 30, "label": "1080p 30fps (Full HD Cinema)"},
     "1080p60": {"width": 1920, "height": 1080, "fps": 60, "label": "1080p 60fps (Native Full HD)"},
 }
 
 DEFAULT_SETTINGS = {
-    "stream_preset": "1080p60",
+    "stream_preset": "720p60",
     "download_format": "mp4"  # 'mp4' or 'mkv'
 }
 
@@ -50,15 +53,53 @@ def save_settings(new_settings):
     return settings
 
 def apply_stream_to_go2rtc(preset_key):
-    preset = STREAM_PRESETS.get(preset_key, STREAM_PRESETS["1080p60"])
+    global current_process
+    if current_process and current_process.poll() is None:
+        print("Cannot switch stream preset while recording is in progress")
+        return False
+
+    preset = STREAM_PRESETS.get(preset_key, STREAM_PRESETS["720p60"])
     dst = f"v4l2:device?video=/dev/video0&input_format=mjpeg&video_size={preset['width']}x{preset['height']}&framerate={preset['fps']}"
+
+    # 1. Force go2rtc to release /dev/video0 by deleting the active stream
+    try:
+        del_req = urllib.request.Request("http://127.0.0.1:1984/api/streams?src=evf", method="DELETE")
+        with urllib.request.urlopen(del_req, timeout=1.5):
+            pass
+    except Exception:
+        pass
+
+    # Give uvcvideo kernel driver and go2rtc a brief moment to close the device handle
+    time.sleep(0.3)
+
+    # 2. Re-register the stream with the new resolution and framerate
     try:
         url = f"http://127.0.0.1:1984/api/streams?src=evf&dst={urllib.parse.quote(dst)}"
         req = urllib.request.Request(url, method="PUT")
         with urllib.request.urlopen(req, timeout=1.5):
             pass
-    except Exception:
-        pass
+        print(f"Applied stream preset '{preset_key}' to go2rtc: {preset['width']}x{preset['height']}@{preset['fps']}fps")
+        return True
+    except Exception as e:
+        print(f"Failed to apply stream preset to go2rtc: {e}")
+        return False
+
+def init_stream_preset():
+    """Startup loop: synchronizes saved preset with go2rtc once go2rtc is ready."""
+    time.sleep(1.0)
+    settings = load_settings()
+    preset_key = settings.get("stream_preset", "720p60")
+    for _ in range(15):
+        try:
+            req = urllib.request.Request("http://127.0.0.1:1984/api/streams")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    apply_stream_to_go2rtc(preset_key)
+                    break
+        except Exception:
+            time.sleep(1.0)
+
+threading.Thread(target=init_stream_preset, daemon=True).start()
 
 current_process = None
 current_raw_file = None
@@ -216,7 +257,7 @@ def process_recording(raw_filename):
 
     # Determine framerate from current settings
     current_settings = load_settings()
-    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["1080p60"])
+    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["720p60"])
     fps_str = str(preset["fps"])
 
     encoding_status[base_name] = {"percent": 0, "eta_text": "Starting..."}

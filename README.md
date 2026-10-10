@@ -11,8 +11,8 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
   - **Raspberry Pi 5**
   - **Raspberry Pi 4**
   - **Raspberry Pi 3** (Model B / B+)
-  - **Raspberry Pi Zero 2 & Zero 2W**
-- **Automated Pi Zero 2 (W) Tuning:** `./run.sh` detects Pi Zero 2 / 2W boards and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
+  - **Raspberry Pi Zero 2W** (I/O seems to be a bottleneck though)
+- **Automated Pi Zero 2W Tuning:** `./run.sh` detects Pi Zero 2W board and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
 - **100% Docker-Based:** Clean containerized architecture on Alpine Linux with zero host pollution.
 - **Direct 1:1 Hardware Pass-Through:** Native 1080p60 V4L2 MJPEG stream with near-zero latency.
 
@@ -91,7 +91,8 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install git -y
 git clone https://github.com/domi-fresh/canopi.git
 cd canopi
-./run.sh # This may take a couple of minutes due to initial setup
+docker compose up -d # This may take a couple of minutes due to initial setup
+# docker logs -f canopi # if one wants to inspect the docker logs
 ```
 
 ### What `./run.sh` Automatically Does:
@@ -100,7 +101,7 @@ cd canopi
 3. Installs Docker and the Docker Compose plugin (if not already installed).
 4. Enables the Docker daemon to start automatically on system boot.
 5. Configures and enables a systemd service (`canopi.service`) ensuring the container auto-launches on boot.
-6. Automatically applies a safe moderate overclock (`1.2GHz CPU`, `500MHz GPU`, `over_voltage=2`) in `config.txt` if a Raspberry Pi Zero 2 or Zero 2W is detected.
+6. Automatically applies a safe moderate overclock (`1.2GHz CPU`, `500MHz GPU`, `over_voltage=2`) in `config.txt` if a Raspberry Pi Zero 2W is detected.
 7. Builds the Alpine-based multi-arch container and starts Canopi in detached mode.
 
 ---
@@ -133,7 +134,11 @@ cd canopi
 
 ### 3. Settings (Stream Mode & Download Format)
 - Tap the **Gear Icon** button below the HUD in the top-left corner to open settings:
-  - **Stream Settings:** Displays active capture mode (`1080p 60fps Native Full HD` hardware pass-through for zero latency and zero CPU load).
+  - **Stream Settings:** Choose between live capture presets dynamically:
+    - `720p 60fps` *(Default / Recommended for Pi Zero 2W: Smooth 60p with zero USB bus congestion)*.
+    - `720p 30fps` *(Ultra-low bandwidth and maximum power saving)*.
+    - `1080p 30fps` *(Full HD cinema quality with reduced USB bandwidth)*.
+    - `1080p 60fps` *(Native Full HD for high-speed USB architectures like Pi 4 / Pi 5)*.
   - **Download Settings:** Choose between download and gallery display formats:
     - `MP4` *(Default: Transcoded H.264, compact file size, native iPhone Photos compatibility)*.
     - `MKV` *(Raw uncompressed MJPEG camera dump for maximum archival quality)*.

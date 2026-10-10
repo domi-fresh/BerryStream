@@ -3,4 +3,4 @@ api:
 
 streams:
   evf:
-    - v4l2:device?video=/dev/video0&input_format=mjpeg&video_size=1920x1080&framerate=60
+    - v4l2:device?video=/dev/video0&input_format=mjpeg&video_size=1280x720&framerate=60

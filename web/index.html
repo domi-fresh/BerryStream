@@ -436,11 +436,32 @@
         <div class="section-title">Stream Settings</div>
         <div class="section-desc">HDMI Capture Resolution & Frame Rate</div>
         <div class="options-group" id="stream-presets-group">
-          <label class="option-item selected" onclick="onSettingChange('stream_preset', '1080p60')">
-            <input type="radio" class="option-radio" name="stream_preset" value="1080p60" checked>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '720p60')">
+            <input type="radio" class="option-radio" name="stream_preset" value="720p60">
+            <div class="option-text">
+              <span class="option-label">720p 60fps</span>
+              <span class="option-sub">Smooth 60p (Recommended for Pi Zero 2W / Single USB)</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '720p30')">
+            <input type="radio" class="option-radio" name="stream_preset" value="720p30">
+            <div class="option-text">
+              <span class="option-label">720p 30fps</span>
+              <span class="option-sub">Ultra-Low Bandwidth & Power Saving</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p30')">
+            <input type="radio" class="option-radio" name="stream_preset" value="1080p30">
+            <div class="option-text">
+              <span class="option-label">1080p 30fps</span>
+              <span class="option-sub">Full HD Cinema (Reduced USB Bandwidth)</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p60')">
+            <input type="radio" class="option-radio" name="stream_preset" value="1080p60">
             <div class="option-text">
               <span class="option-label">1080p 60fps</span>
-              <span class="option-sub">Native Camera Pass-Through (Zero Latency)</span>
+              <span class="option-sub">Native Full HD (Requires High-Speed USB / Pi 4/5)</span>
             </div>
           </label>
         </div>
@@ -504,7 +525,7 @@
 
     // Application Settings (Stream Presets & Download Format)
     let currentSettings = {
-      stream_preset: "1080p60",
+      stream_preset: "720p60",
       download_format: "mp4"
     };
 
@@ -551,6 +572,11 @@
     }
 
     async function onSettingChange(type, value) {
+      if (type === 'stream_preset' && isRecording) {
+        alert("Please stop recording before changing stream resolution.");
+        return;
+      }
+
       const prevStreamPreset = currentSettings.stream_preset;
       currentSettings[type] = value;
       localStorage.setItem('canopi_settings', JSON.stringify(currentSettings));
@@ -566,7 +592,15 @@
 
       if (type === 'stream_preset' && value !== prevStreamPreset) {
         if (!isGalleryView) {
-          startLiveStream();
+          hud.textContent = "SWITCHING RESOLUTION...";
+          hud.classList.remove('hud-alert');
+          // Disconnect active socket in Safari
+          streamImg.src = "";
+          setTimeout(() => {
+            if (!isGalleryView) {
+              streamImg.src = `${getStreamUrl()}&t=${Date.now()}`;
+            }
+          }, 600);
         }
       }
 
