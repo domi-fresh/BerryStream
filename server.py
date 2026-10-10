@@ -65,6 +65,7 @@ def apply_stream_to_go2rtc(preset_key):
 current_process = None
 current_raw_file = None
 start_time = 0
+encoding_status = {}  # { base_id: { "percent": int, "eta_text": str } }
 
 def set_low_priority():
     """Sets lowest process scheduling priority so background ffmpeg never starves go2rtc."""
@@ -73,18 +74,34 @@ def set_low_priority():
     except Exception:
         pass
 
+def parse_ffmpeg_time(time_str):
+    try:
+        parts = time_str.split(":")
+        if len(parts) == 3:
+            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+    except Exception:
+        pass
+    return 0.0
+
+def get_file_duration(path):
+    try:
+        res = subprocess.run([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            path
+        ], capture_output=True, text=True, timeout=5)
+        return float(res.stdout.strip())
+    except Exception:
+        return 0.0
+
 def process_recording(raw_filename):
-    """Background worker: creates thumbnail and transcodes to iOS MP4 cleanly."""
+    """Background worker: creates thumbnail and transcodes to iOS MP4 cleanly with progress tracking."""
     raw_path = os.path.join(REC_DIR, raw_filename)
     base_name = os.path.splitext(raw_filename)[0]
     thumb_path = os.path.join(THUMB_DIR, f"{base_name}.jpg")
     mp4_temp = os.path.join(MP4_DIR, f"{base_name}.tmp.mp4")
     mp4_final = os.path.join(MP4_DIR, f"{base_name}.mp4")
-
-    # Determine framerate from current settings
-    current_settings = load_settings()
-    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["1080p60"])
-    fps_str = str(preset["fps"])
 
     # 1. Generate thumbnail
     subprocess.run([
@@ -95,8 +112,18 @@ def process_recording(raw_filename):
         thumb_path
     ], preexec_fn=set_low_priority)
 
-    # 2. Transcode to web-safe MP4 at configured framerate (restricted to 2 threads and nice 19)
-    res = subprocess.run([
+    # 2. Get total clip duration for progress calculation
+    total_duration = get_file_duration(raw_path)
+
+    # Determine framerate from current settings
+    current_settings = load_settings()
+    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["1080p60"])
+    fps_str = str(preset["fps"])
+
+    encoding_status[base_name] = {"percent": 0, "eta_text": "Starting..."}
+    encode_start = time.time()
+
+    cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
         "-threads", "2",
         "-r", fps_str,
@@ -105,11 +132,46 @@ def process_recording(raw_filename):
         "-r", fps_str,
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
+        "-progress", "pipe:1",
         mp4_temp
-    ], preexec_fn=set_low_priority)
+    ]
 
-    if res.returncode == 0 and os.path.exists(mp4_temp):
-        os.rename(mp4_temp, mp4_final)
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            preexec_fn=set_low_priority
+        )
+
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("out_time="):
+                time_val = line.split("=", 1)[1]
+                if time_val != "N/A":
+                    curr_sec = parse_ffmpeg_time(time_val)
+                    if total_duration > 0:
+                        pct = min(99, max(0, int((curr_sec / total_duration) * 100)))
+                    else:
+                        pct = min(99, int(time.time() - encode_start))
+
+                    elapsed = time.time() - encode_start
+                    if pct > 0:
+                        total_est = elapsed / (pct / 100.0)
+                        eta_sec = max(0, int(total_est - elapsed))
+                        eta_text = f"{eta_sec}s left" if eta_sec > 0 else "Finishing..."
+                    else:
+                        eta_text = "Calculating..."
+
+                    encoding_status[base_name] = {"percent": pct, "eta_text": eta_text}
+
+        proc.wait()
+        if proc.returncode == 0 and os.path.exists(mp4_temp):
+            os.rename(mp4_temp, mp4_final)
+    finally:
+        encoding_status.pop(base_name, None)
 
 class CanopiHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -174,6 +236,9 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                     mp4_size = round(os.path.getsize(mp4_path) / (1024 * 1024), 1) if mp4_ready else None
                     raw_size = round(os.path.getsize(raw_path) / (1024 * 1024), 1)
 
+                    is_encoding = base in encoding_status
+                    enc_info = encoding_status.get(base, None)
+
                     items.append({
                         "id": base,
                         "raw_name": f,
@@ -184,7 +249,10 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                         "thumb": f"/media/thumb/{base}.jpg" if thumb_ready else None,
                         "mp4": f"/media/mp4/{base}.mp4" if mp4_ready else None,
                         "mkv": f"/media/raw/{base}.mkv",
-                        "ready": mp4_ready
+                        "ready": mp4_ready,
+                        "encoding": is_encoding,
+                        "progress": enc_info["percent"] if is_encoding else (100 if mp4_ready else 0),
+                        "eta_text": enc_info["eta_text"] if is_encoding else ""
                     })
             self._send_json({"items": items})
 

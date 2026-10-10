@@ -235,6 +235,24 @@
     }
     .btn-disabled { opacity: 0.35; pointer-events: none; }
 
+    /* Encoding Progress Bar */
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff66, #00cc55);
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
+    }
+
     /* Video Player Overlay */
     #player-modal {
       position: fixed;
@@ -680,7 +698,7 @@
     // Gallery Actions
     function startGalleryPolling() {
       if (!galleryPollTimer) {
-        galleryPollTimer = setInterval(loadGallery, 2000);
+        galleryPollTimer = setInterval(loadGallery, 1500);
       }
     }
 
@@ -713,9 +731,22 @@
         data.items.forEach(item => {
           const isMp4 = currentSettings.download_format === 'mp4';
           const displayName = isMp4 ? item.mp4_name : item.raw_name;
-          const displaySize = isMp4
-            ? (item.mp4_size_mb !== null ? `${item.mp4_size_mb} MB` : (item.ready ? 'Ready' : 'Encoding...'))
-            : `${item.raw_size_mb} MB`;
+
+          let displaySize = `${item.raw_size_mb} MB`;
+          let statusText = 'Raw MKV';
+          if (isMp4) {
+            if (item.ready) {
+              displaySize = item.mp4_size_mb !== null ? `${item.mp4_size_mb} MB` : `${item.size_mb} MB`;
+              statusText = 'Ready';
+            } else if (item.encoding) {
+              displaySize = `${item.raw_size_mb} MB`;
+              statusText = `Encoding (${item.progress}%) • ${item.eta_text}`;
+            } else {
+              displaySize = `${item.raw_size_mb} MB`;
+              statusText = 'Encoding...';
+            }
+          }
+
           const saveUrl = isMp4 ? item.mp4 : item.mkv;
           const canSave = isMp4 ? item.ready : true;
 
@@ -724,10 +755,15 @@
           card.innerHTML = `
             ${item.thumb 
               ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
-              : `<div class="card-thumb">PROCESSING...</div>`}
+              : `<div class="card-thumb">${item.encoding ? 'ENCODING ' + item.progress + '%' : 'PROCESSING...'}</div>`}
             <div class="card-body">
               <div class="card-title">${displayName}</div>
-              <div class="card-meta">${displaySize} • ${isMp4 ? (item.ready ? 'Ready' : 'Encoding...') : 'Raw MKV'}</div>
+              <div class="card-meta">${displaySize} • ${statusText}</div>
+              ${item.encoding ? `
+                <div class="progress-track">
+                  <div class="progress-fill" style="width: ${item.progress}%;"></div>
+                </div>
+              ` : ''}
               <div class="card-actions">
                 <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
                 <button class="btn-dl ${canSave ? '' : 'btn-disabled'}" onclick="saveToPhone(this, '${saveUrl}', '${displayName}')">SAVE</button>
