@@ -165,9 +165,8 @@ systemctl enable canopi.service >/dev/null 2>&1
 echo -e "${GREEN}==> Boot auto-start service enabled successfully.${NC}"
 
 # 7. Build and launch container
-echo -e "${BLUE}==> Building and launching Canopi container (using host network for build)...${NC}"
-$DOCKER_COMPOSE_CMD build --network=host || $DOCKER_COMPOSE_CMD build
-$DOCKER_COMPOSE_CMD up -d
+echo -e "${BLUE}==> Building and launching Canopi container...${NC}"
+$DOCKER_COMPOSE_CMD up -d --build
 
 # 8. Success Banner & Instructions
 IP_HINT=$(ip -4 addr show usb0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "172.20.10.2")

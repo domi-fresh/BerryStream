@@ -1,8 +1,6 @@
 services:
   canopi:
-    build:
-      context: .
-      network: host
+    build: .
     container_name: canopi
     restart: unless-stopped
     privileged: true
