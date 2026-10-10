@@ -257,12 +257,142 @@
       right: env(safe-area-inset-right, 20px);
       padding: 10px 18px;
     }
+
+    /* Settings Button below HUD */
+    #settings-btn {
+      top: calc(env(safe-area-inset-top, 16px) + 38px);
+      left: env(safe-area-inset-left, 18px);
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border-radius: 10px;
+    }
+
+    /* Full-screen Settings View Overlay */
+    #settings-view {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 10, 0.96);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      z-index: 45;
+      display: none;
+      flex-direction: column;
+      padding: env(safe-area-inset-top, 24px) env(safe-area-inset-right, 20px) env(safe-area-inset-bottom, 24px) env(safe-area-inset-left, 20px);
+    }
+    #settings-view.active { display: flex; }
+    .settings-header {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 20px 0 60px 0;
+      max-width: 520px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .settings-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #00ff66;
+      text-transform: uppercase;
+    }
+    .section-desc {
+      font-size: 11px;
+      color: #888;
+      margin-top: -6px;
+    }
+    .options-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .option-item:active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .option-item.selected {
+      background: rgba(0, 255, 102, 0.1);
+      border-color: rgba(0, 255, 102, 0.5);
+    }
+    .option-radio {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      outline: none;
+      margin: 0;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .option-radio:checked {
+      border-color: #00ff66;
+      background: #00ff66;
+      box-shadow: inset 0 0 0 3px #000;
+    }
+    .option-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+    }
+    .option-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .option-sub {
+      font-size: 11px;
+      color: #888;
+    }
   </style>
 </head>
 <body>
 
   <div id="viewport-container">
     <div id="hud">USB LINK • LIVE</div>
+
+    <button id="settings-btn" class="ctrl-btn" onclick="openSettings()" title="Settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
 
     <button id="rec-btn" class="ctrl-btn" onclick="toggleRecord()">
       <div id="rec-dot"></div>
@@ -274,6 +404,73 @@
     <button id="files-btn" class="ctrl-btn" onclick="openGallery()">GALLERY</button>
 
     <img id="evf-feed" alt="Live EVF Stream">
+  </div>
+
+  <!-- Settings View Overlay -->
+  <div id="settings-view">
+    <div class="settings-header">
+      <span style="color:#fff; font-size:18px; font-weight:700;">SETTINGS</span>
+      <button class="ctrl-btn" style="position:static; padding:8px 18px;" onclick="closeSettings()">DONE</button>
+    </div>
+    <div class="settings-content">
+      <!-- Section 1: Stream Settings -->
+      <div class="settings-section">
+        <div class="section-title">Stream Settings</div>
+        <div class="section-desc">HDMI Capture Resolution & Frame Rate</div>
+        <div class="options-group" id="stream-presets-group">
+          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p60')">
+            <input type="radio" class="option-radio" name="stream_preset" value="1080p60">
+            <div class="option-text">
+              <span class="option-label">1080p 60fps</span>
+              <span class="option-sub">Full HD (Default)</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '1080p30')">
+            <input type="radio" class="option-radio" name="stream_preset" value="1080p30">
+            <div class="option-text">
+              <span class="option-label">1080p 30fps</span>
+              <span class="option-sub">Full HD</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '720p60')">
+            <input type="radio" class="option-radio" name="stream_preset" value="720p60">
+            <div class="option-text">
+              <span class="option-label">720p 60fps</span>
+              <span class="option-sub">HD</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('stream_preset', '720p30')">
+            <input type="radio" class="option-radio" name="stream_preset" value="720p30">
+            <div class="option-text">
+              <span class="option-label">720p 30fps</span>
+              <span class="option-sub">HD</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section 2: Download Settings -->
+      <div class="settings-section">
+        <div class="section-title">Download Settings</div>
+        <div class="section-desc">File Format & Gallery Display</div>
+        <div class="options-group" id="download-format-group">
+          <label class="option-item" onclick="onSettingChange('download_format', 'mp4')">
+            <input type="radio" class="option-radio" name="download_format" value="mp4">
+            <div class="option-text">
+              <span class="option-label">MP4</span>
+              <span class="option-sub">Optimized for iOS Photos & Sharing (Default)</span>
+            </div>
+          </label>
+          <label class="option-item" onclick="onSettingChange('download_format', 'mkv')">
+            <input type="radio" class="option-radio" name="download_format" value="mkv">
+            <div class="option-text">
+              <span class="option-label">MKV</span>
+              <span class="option-sub">Raw Camera Stream (Uncompressed MJPEG)</span>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Gallery View -->
@@ -306,6 +503,82 @@
     let secondsElapsed = 0;
     let galleryPollTimer = null;
     let lastGalleryJson = "";
+
+    // Application Settings (Stream Presets & Download Format)
+    let currentSettings = {
+      stream_preset: "1080p60",
+      download_format: "mp4"
+    };
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) currentSettings = { ...currentSettings, ...data.settings };
+        }
+      } catch(e) {
+        const local = localStorage.getItem('canopi_settings');
+        if (local) currentSettings = { ...currentSettings, ...JSON.parse(local) };
+      }
+      updateSettingsUI();
+    }
+
+    function updateSettingsUI() {
+      document.querySelectorAll('input[name="stream_preset"]').forEach(radio => {
+        const isMatch = radio.value === currentSettings.stream_preset;
+        radio.checked = isMatch;
+        const item = radio.closest('.option-item');
+        if (item) item.classList.toggle('selected', isMatch);
+      });
+      document.querySelectorAll('input[name="download_format"]').forEach(radio => {
+        const isMatch = radio.value === currentSettings.download_format;
+        radio.checked = isMatch;
+        const item = radio.closest('.option-item');
+        if (item) item.classList.toggle('selected', isMatch);
+      });
+    }
+
+    function openSettings() {
+      loadSettings();
+      document.getElementById('settings-view').classList.add('active');
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-view').classList.remove('active');
+      lastGalleryJson = "";
+      if (isGalleryView) {
+        loadGallery();
+      }
+    }
+
+    async function onSettingChange(type, value) {
+      const prevStreamPreset = currentSettings.stream_preset;
+      currentSettings[type] = value;
+      localStorage.setItem('canopi_settings', JSON.stringify(currentSettings));
+      updateSettingsUI();
+
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentSettings)
+        });
+      } catch(e) {}
+
+      if (type === 'stream_preset' && value !== prevStreamPreset) {
+        if (!isGalleryView) {
+          startLiveStream();
+        }
+      }
+
+      if (type === 'download_format') {
+        lastGalleryJson = "";
+        if (isGalleryView) {
+          loadGallery();
+        }
+      }
+    }
 
     function getStreamUrl() {
       return `${window.location.protocol}//${window.location.hostname}:1984/api/stream.mjpeg?src=evf`;
@@ -438,6 +711,14 @@
         }
 
         data.items.forEach(item => {
+          const isMp4 = currentSettings.download_format === 'mp4';
+          const displayName = isMp4 ? item.mp4_name : item.raw_name;
+          const displaySize = isMp4
+            ? (item.mp4_size_mb !== null ? `${item.mp4_size_mb} MB` : (item.ready ? 'Ready' : 'Encoding...'))
+            : `${item.raw_size_mb} MB`;
+          const saveUrl = isMp4 ? item.mp4 : item.mkv;
+          const canSave = isMp4 ? item.ready : true;
+
           const card = document.createElement('div');
           card.className = 'card';
           card.innerHTML = `
@@ -445,12 +726,12 @@
               ? `<img class="card-thumb" src="${item.thumb}" alt="thumb">` 
               : `<div class="card-thumb">PROCESSING...</div>`}
             <div class="card-body">
-              <div class="card-title">${item.raw_name}</div>
-              <div class="card-meta">${item.size_mb} MB • ${item.ready ? 'Ready' : 'Encoding...'}</div>
+              <div class="card-title">${displayName}</div>
+              <div class="card-meta">${displaySize} • ${isMp4 ? (item.ready ? 'Ready' : 'Encoding...') : 'Raw MKV'}</div>
               <div class="card-actions">
                 <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
-                <button class="btn-dl ${item.ready ? '' : 'btn-disabled'}" onclick="saveToPhone(this, '${item.mp4}', '${item.id}.mp4')">SAVE</button>
-                <button class="btn-del" onclick="deleteRecording('${item.id}', '${item.raw_name}')" title="Delete Recording">
+                <button class="btn-dl ${canSave ? '' : 'btn-disabled'}" onclick="saveToPhone(this, '${saveUrl}', '${displayName}')">SAVE</button>
+                <button class="btn-del" onclick="deleteRecording('${item.id}', '${displayName}')" title="Delete Recording">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -547,19 +828,21 @@
     const urlParams = new URLSearchParams(window.location.search);
     const isGalleryView = urlParams.get('view') === 'gallery';
 
-    if (isGalleryView) {
-      // In Gallery View: NEVER load the EVF stream (0 Mbps over USB link)
-      viewportContainer.style.display = 'none';
-      galleryView.classList.add('active');
-      loadGallery();
-      startGalleryPolling();
-    } else {
-      // In Live View: Show EVF with clean native hardware MJPEG decoding
-      galleryView.classList.remove('active');
-      viewportContainer.style.display = 'flex';
-      startLiveStream();
-      syncRecordStatus();
-    }
+    loadSettings().then(() => {
+      if (isGalleryView) {
+        // In Gallery View: NEVER load the EVF stream (0 Mbps over USB link)
+        viewportContainer.style.display = 'none';
+        galleryView.classList.add('active');
+        loadGallery();
+        startGalleryPolling();
+      } else {
+        // In Live View: Show EVF with clean native hardware MJPEG decoding
+        galleryView.classList.remove('active');
+        viewportContainer.style.display = 'flex';
+        startLiveStream();
+        syncRecordStatus();
+      }
+    });
   </script>
 </body>
 </html>

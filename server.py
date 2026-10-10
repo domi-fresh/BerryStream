@@ -5,16 +5,62 @@ import subprocess
 import time
 import json
 import threading
+import urllib.request
+import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 REC_DIR = "/app/recordings"
 THUMB_DIR = "/app/recordings/thumbs"
 MP4_DIR = "/app/recordings/mp4"
+SETTINGS_FILE = os.path.join(REC_DIR, "settings.json")
 
 os.makedirs(REC_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(MP4_DIR, exist_ok=True)
+
+STREAM_PRESETS = {
+    "1080p60": {"width": 1920, "height": 1080, "fps": 60, "label": "1080p 60fps (Full HD)"},
+    "1080p30": {"width": 1920, "height": 1080, "fps": 30, "label": "1080p 30fps (Full HD)"},
+    "720p60":  {"width": 1280, "height": 720,  "fps": 60, "label": "720p 60fps (HD)"},
+    "720p30":  {"width": 1280, "height": 720,  "fps": 30, "label": "720p 30fps (HD)"},
+}
+
+DEFAULT_SETTINGS = {
+    "stream_preset": "1080p60",
+    "download_format": "mp4"  # 'mp4' or 'mkv'
+}
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                data = json.load(f)
+                return {**DEFAULT_SETTINGS, **data}
+        except Exception:
+            pass
+    return dict(DEFAULT_SETTINGS)
+
+def save_settings(new_settings):
+    settings = load_settings()
+    settings.update(new_settings)
+    try:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(settings, f, indent=2)
+    except Exception:
+        pass
+    return settings
+
+def apply_stream_to_go2rtc(preset_key):
+    preset = STREAM_PRESETS.get(preset_key, STREAM_PRESETS["1080p60"])
+    dst = f"v4l2:device?video=/dev/video0&input_format=mjpeg&video_size={preset['width']}x{preset['height']}&framerate={preset['fps']}"
+    try:
+        url = f"http://127.0.0.1:1984/api/streams?src=evf&dst={urllib.parse.quote(dst)}"
+        req = urllib.request.Request(url, method="PUT")
+        with urllib.request.urlopen(req, timeout=1.5):
+            pass
+    except Exception:
+        pass
 
 current_process = None
 current_raw_file = None
@@ -35,6 +81,11 @@ def process_recording(raw_filename):
     mp4_temp = os.path.join(MP4_DIR, f"{base_name}.tmp.mp4")
     mp4_final = os.path.join(MP4_DIR, f"{base_name}.mp4")
 
+    # Determine framerate from current settings
+    current_settings = load_settings()
+    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["1080p60"])
+    fps_str = str(preset["fps"])
+
     # 1. Generate thumbnail
     subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
@@ -44,14 +95,14 @@ def process_recording(raw_filename):
         thumb_path
     ], preexec_fn=set_low_priority)
 
-    # 2. Transcode to web-safe MP4 at 60 fps (matching EVF stream rate, restricted to 2 threads and nice 19)
+    # 2. Transcode to web-safe MP4 at configured framerate (restricted to 2 threads and nice 19)
     res = subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-threads", "2",
-        "-r", "60",
+        "-r", fps_str,
         "-i", raw_path,
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-        "-r", "60",
+        "-r", fps_str,
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         mp4_temp
@@ -108,21 +159,31 @@ class CanopiHandler(SimpleHTTPRequestHandler):
             else:
                 self._send_json({"status": "not_recording"})
 
+        elif parsed.path == "/api/settings":
+            self._send_json({"settings": load_settings(), "presets": STREAM_PRESETS})
+
         elif parsed.path == "/api/gallery":
             items = []
             for f in sorted(os.listdir(REC_DIR), reverse=True):
                 if f.endswith(".mkv"):
                     base = os.path.splitext(f)[0]
-                    mp4_ready = os.path.exists(os.path.join(MP4_DIR, f"{base}.mp4"))
+                    mp4_path = os.path.join(MP4_DIR, f"{base}.mp4")
+                    raw_path = os.path.join(REC_DIR, f)
+                    mp4_ready = os.path.exists(mp4_path)
                     thumb_ready = os.path.exists(os.path.join(THUMB_DIR, f"{base}.jpg"))
-                    raw_size = round(os.path.getsize(os.path.join(REC_DIR, f)) / (1024 * 1024), 1)
+                    mp4_size = round(os.path.getsize(mp4_path) / (1024 * 1024), 1) if mp4_ready else None
+                    raw_size = round(os.path.getsize(raw_path) / (1024 * 1024), 1)
 
                     items.append({
                         "id": base,
                         "raw_name": f,
-                        "size_mb": raw_size,
+                        "mp4_name": f"{base}.mp4",
+                        "size_mb": mp4_size if mp4_ready else raw_size,
+                        "mp4_size_mb": mp4_size,
+                        "raw_size_mb": raw_size,
                         "thumb": f"/media/thumb/{base}.jpg" if thumb_ready else None,
                         "mp4": f"/media/mp4/{base}.mp4" if mp4_ready else None,
+                        "mkv": f"/media/raw/{base}.mkv",
                         "ready": mp4_ready
                     })
             self._send_json({"items": items})
@@ -155,7 +216,12 @@ class CanopiHandler(SimpleHTTPRequestHandler):
             parts = parsed.path.strip("/").split("/")
             if len(parts) == 3:
                 mtype, fname = parts[1], parts[2]
-                folder = THUMB_DIR if mtype == "thumb" else MP4_DIR
+                if mtype == "thumb":
+                    folder = THUMB_DIR
+                elif mtype == "raw":
+                    folder = REC_DIR
+                else:
+                    folder = MP4_DIR
                 target = os.path.join(folder, fname)
 
                 if not os.path.exists(target):
@@ -169,6 +235,22 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                     self.end_headers()
                     with open(target, "rb") as fp:
                         self.wfile.write(fp.read())
+                    return
+
+                if mtype == "raw":
+                    file_size = os.path.getsize(target)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "video/x-matroska")
+                    self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+                    self.send_header("Content-Length", str(file_size))
+                    self.end_headers()
+                    with open(target, "rb") as fp:
+                        chunk_size = 64 * 1024
+                        while True:
+                            data = fp.read(chunk_size)
+                            if not data:
+                                break
+                            self.wfile.write(data)
                     return
 
                 # Range-Request Handling for Video (iOS Safari Compliance)
@@ -221,7 +303,26 @@ class CanopiHandler(SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        self.do_GET()
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/settings":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except Exception:
+                data = {}
+
+            new_settings = {}
+            if "stream_preset" in data and data["stream_preset"] in STREAM_PRESETS:
+                new_settings["stream_preset"] = data["stream_preset"]
+                apply_stream_to_go2rtc(data["stream_preset"])
+            if "download_format" in data and data["download_format"] in ["mp4", "mkv"]:
+                new_settings["download_format"] = data["download_format"]
+
+            saved = save_settings(new_settings)
+            self._send_json({"status": "saved", "settings": saved, "presets": STREAM_PRESETS})
+        else:
+            self.do_GET()
 
     def _send_json(self, data):
         payload = json.dumps(data).encode("utf-8")
