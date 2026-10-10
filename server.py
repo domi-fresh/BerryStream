@@ -52,6 +52,8 @@ def save_settings(new_settings):
         pass
     return settings
 
+GO2RTC_CONFIG = "/app/go2rtc.yaml"
+
 def apply_stream_to_go2rtc(preset_key):
     global current_process
     if current_process and current_process.poll() is None:
@@ -59,36 +61,51 @@ def apply_stream_to_go2rtc(preset_key):
         return False
 
     preset = STREAM_PRESETS.get(preset_key, STREAM_PRESETS["720p60"])
-    dst = f"v4l2:device?video=/dev/video0&input_format=mjpeg&video_size={preset['width']}x{preset['height']}&framerate={preset['fps']}"
+    config_content = f"""api:
+  listen: ":1984"
 
-    # 1. Force go2rtc to release /dev/video0 by deleting the active stream
+streams:
+  evf:
+    - v4l2:device?video=/dev/video0&input_format=mjpeg&video_size={preset['width']}x{preset['height']}&framerate={preset['fps']}
+"""
+    # 1. Update /app/go2rtc.yaml on disk with active preset
     try:
-        del_req = urllib.request.Request("http://127.0.0.1:1984/api/streams?src=evf", method="DELETE")
-        with urllib.request.urlopen(del_req, timeout=1.5):
-            pass
-    except Exception:
-        pass
+        with open(GO2RTC_CONFIG, "w") as f:
+            f.write(config_content)
+        print(f"Updated {GO2RTC_CONFIG} with preset '{preset_key}' ({preset['width']}x{preset['height']}@{preset['fps']}fps)")
+    except Exception as e:
+        print(f"Error writing {GO2RTC_CONFIG}: {e}")
 
-    # Give uvcvideo kernel driver and go2rtc a brief moment to close the device handle
-    time.sleep(0.3)
-
-    # 2. Re-register the stream with the new resolution and framerate
+    # 2. Tell go2rtc to restart and cleanly reload configuration and V4L2 device
     try:
-        url = f"http://127.0.0.1:1984/api/streams?src=evf&dst={urllib.parse.quote(dst)}"
-        req = urllib.request.Request(url, method="PUT")
-        with urllib.request.urlopen(req, timeout=1.5):
+        req = urllib.request.Request("http://127.0.0.1:1984/api/restart", method="POST")
+        with urllib.request.urlopen(req, timeout=2.0):
             pass
-        print(f"Applied stream preset '{preset_key}' to go2rtc: {preset['width']}x{preset['height']}@{preset['fps']}fps")
+        print(f"Triggered go2rtc restart for preset '{preset_key}'")
         return True
     except Exception as e:
-        print(f"Failed to apply stream preset to go2rtc: {e}")
+        print(f"Failed to trigger go2rtc restart: {e}")
         return False
 
 def init_stream_preset():
-    """Startup loop: synchronizes saved preset with go2rtc once go2rtc is ready."""
+    """Startup check: ensures go2rtc.yaml matches saved preset on container boot."""
     time.sleep(1.0)
     settings = load_settings()
     preset_key = settings.get("stream_preset", "720p60")
+    preset = STREAM_PRESETS.get(preset_key, STREAM_PRESETS["720p60"])
+    expected_line = f"video_size={preset['width']}x{preset['height']}&framerate={preset['fps']}"
+
+    try:
+        if os.path.exists(GO2RTC_CONFIG):
+            with open(GO2RTC_CONFIG, "r") as f:
+                content = f.read()
+            if expected_line in content:
+                print(f"go2rtc.yaml already configured for preset '{preset_key}'")
+                return
+    except Exception:
+        pass
+
+    # If different, wait until go2rtc is ready, then update and restart
     for _ in range(15):
         try:
             req = urllib.request.Request("http://127.0.0.1:1984/api/streams")

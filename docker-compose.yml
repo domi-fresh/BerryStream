@@ -7,7 +7,7 @@ services:
     network_mode: host
     volumes:
       - /dev:/dev
-      - ./go2rtc.yaml:/app/go2rtc.yaml:ro
+      - ./go2rtc.yaml:/app/go2rtc.yaml
       - ./web:/app/web:ro
       - ./server.py:/app/server.py:ro
       - ./recordings:/app/recordings
