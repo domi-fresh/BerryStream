@@ -116,6 +116,7 @@
     }
     #gallery-view.active { display: flex; }
     .gallery-header {
+      flex-shrink: 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -123,19 +124,22 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     .gallery-grid {
-      flex: 1;
+      flex: 1 1 auto;
       min-height: 0;
-      overflow-y: auto;
+      height: 100%;
+      overflow-y: scroll;
       -webkit-overflow-scrolling: touch;
       display: grid;
       grid-template-columns: repeat(2, 1fr);
+      grid-auto-rows: max-content;
       gap: 14px;
-      padding: 16px 0 60px 0;
+      padding: 16px 0 80px 0;
       align-content: start;
     }
     @media (orientation: landscape) {
       .gallery-grid {
         grid-template-columns: repeat(3, 1fr);
+        grid-auto-rows: max-content;
         gap: 14px;
       }
     }
@@ -147,6 +151,8 @@
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      height: auto;
+      min-height: max-content;
     }
     .card-thumb {
       width: 100%;
@@ -159,12 +165,14 @@
       color: #777;
       font-size: 11px;
       font-weight: 600;
+      flex-shrink: 0;
     }
     .card-body {
       padding: 10px;
       display: flex;
       flex-direction: column;
       gap: 6px;
+      flex-shrink: 0;
     }
     .card-title {
       font-size: 12px;
@@ -173,16 +181,24 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      flex-shrink: 0;
     }
-    .card-meta { font-size: 11px; color: #aaa; }
+    .card-meta {
+      font-size: 11px;
+      color: #aaa;
+      flex-shrink: 0;
+    }
     .card-actions {
       display: flex;
       gap: 8px;
       margin-top: 4px;
+      flex-shrink: 0;
     }
     .btn-play, .btn-dl {
       flex: 1;
-      padding: 8px 0;
+      height: 36px;
+      min-height: 36px;
+      padding: 0;
       border: none;
       border-radius: 8px;
       font-size: 12px;
@@ -193,6 +209,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
     .btn-play { background: #00ff66; color: #000; }
     .btn-dl { background: rgba(255, 255, 255, 0.2); color: #fff; }
