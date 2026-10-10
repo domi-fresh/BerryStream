@@ -33,6 +33,50 @@ cd "$SCRIPT_DIR"
 ARCH="$(uname -m)"
 echo -e "${BLUE}==> Detected Hardware Architecture:${NC} ${GREEN}${ARCH}${NC}"
 
+# Detect specific board model
+BOARD_MODEL=""
+if [ -f /proc/device-tree/model ]; then
+  BOARD_MODEL=$(tr -d '\0' < /proc/device-tree/model)
+elif [ -f /sys/firmware/devicetree/base/model ]; then
+  BOARD_MODEL=$(tr -d '\0' < /sys/firmware/devicetree/base/model)
+fi
+
+if [ -n "$BOARD_MODEL" ]; then
+  echo -e "${BLUE}==> Detected Board Model:${NC} ${GREEN}${BOARD_MODEL}${NC}"
+fi
+
+# Apply safe moderate overclock if board is Raspberry Pi Zero 2 or Zero 2 W
+if echo "$BOARD_MODEL" | grep -qi "Zero 2"; then
+  echo -e "${YELLOW}==> Raspberry Pi Zero 2 (W) detected. Applying permanent moderate overclock (1.2GHz CPU, 500MHz GPU, over_voltage=2)...${NC}"
+  
+  # Locate active config.txt (Bookworm uses /boot/firmware/config.txt, older versions use /boot/config.txt)
+  BOOT_CONFIG=""
+  if [ -f "/boot/firmware/config.txt" ]; then
+    BOOT_CONFIG="/boot/firmware/config.txt"
+  elif [ -f "/boot/config.txt" ]; then
+    BOOT_CONFIG="/boot/config.txt"
+  fi
+
+  if [ -n "$BOOT_CONFIG" ]; then
+    if grep -q "arm_freq=1200" "$BOOT_CONFIG"; then
+      echo -e "${GREEN}==> Overclock settings already present in ${BOOT_CONFIG}.${NC}"
+    else
+      cat << 'EOF' >> "$BOOT_CONFIG"
+
+# ==============================================================================
+# Canopi Performance Tuning (Raspberry Pi Zero 2 / 2W Overclock)
+# ==============================================================================
+arm_freq=1200
+gpu_freq=500
+over_voltage=2
+EOF
+      echo -e "${GREEN}==> Overclock settings successfully configured in ${BOOT_CONFIG} (takes effect upon reboot).${NC}"
+    fi
+  else
+    echo -e "${YELLOW}==> config.txt not found under /boot/firmware or /boot; skipping overclock config.${NC}"
+  fi
+fi
+
 # 2. Update package lists and install USB tethering dependencies
 echo -e "${BLUE}==> Installing host dependencies (usbmuxd, libimobiledevice, v4l-utils)...${NC}"
 apt-get update -qq

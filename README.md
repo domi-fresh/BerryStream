@@ -12,32 +12,37 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
   - **Raspberry Pi 4**
   - **Raspberry Pi 3** (Model B / B+)
   - **Raspberry Pi Zero 2 & Zero 2W**
+- **Automated Pi Zero 2 (W) Tuning:** `./run.sh` detects Pi Zero 2 / 2W boards and applies a permanent, safe moderate overclock (`arm_freq=1200`, `gpu_freq=500`, `over_voltage=2`) to boost it to almost Pi 3 performance.
 - **100% Docker-Based:** Clean containerized architecture on Alpine Linux with zero host pollution.
 - **Direct 1:1 Hardware Pass-Through:** Native 1080p60 V4L2 MJPEG stream with near-zero latency.
 
 ---
 
 ## Table of Contents
-- [Architecture & Tech Stack](#architecture--tech-stack)
-- [Hardware Setup](#hardware-setup)
-- [Quick Start (One-Command Setup)](#quick-start-one-command-setup)
-- [iPhone USB Tethering Setup](#iphone-usb-tethering-setup)
-- [User Guide & Features](#user-guide--features)
-  - [1. Live Viewfinder Monitor](#1-live-viewfinder-monitor)
-  - [2. Stream Synchronization (SYNC Button)](#2-stream-synchronization-sync-button)
-  - [3. Settings (Stream Mode & Download Format)](#3-settings-stream-mode--download-format)
-  - [4. High-Framerate Recording (FHD 60p)](#4-high-framerate-recording-fhd-60p)
-  - [5. Recordings Gallery](#5-recordings-gallery)
-  - [6. Saving Directly to iPhone Photos / Camera Roll](#6-saving-directly-to-iphone-photos--camera-roll)
-  - [7. Deleting Clips](#7-deleting-clips)
-- [Automated Failsafes & Reliability](#automated-failsafes--reliability)
-  - [Phone Death & Cable Disconnect Watchdog](#phone-death--cable-disconnect-watchdog)
-  - [App-Switch & Screen-Lock Auto-Save](#app-switch--screen-lock-auto-save)
-  - [Sequential Transcode Queue (No CPU Starvation)](#sequential-transcode-queue-no-cpu-starvation)
-  - [Power-Loss & Crash Recovery Loop](#power-loss--crash-recovery-loop)
-- [Docker Management Commands](#docker-management-commands)
-- [Backend API Reference](#backend-api-reference)
-- [Project Structure](#project-structure)
+- [Canopi — Canon Ultra-Low-Latency Field EVF \& Recorder](#canopi--canon-ultra-low-latency-field-evf--recorder)
+  - [Highlights \& Hardware Compatibility](#highlights--hardware-compatibility)
+  - [Table of Contents](#table-of-contents)
+  - [Architecture \& Tech Stack](#architecture--tech-stack)
+  - [Hardware Setup](#hardware-setup)
+  - [Quick Start (One-Command Setup)](#quick-start-one-command-setup)
+    - [What `./run.sh` Automatically Does:](#what-runsh-automatically-does)
+  - [iPhone USB Tethering Setup](#iphone-usb-tethering-setup)
+  - [User Guide \& Features](#user-guide--features)
+    - [1. Live Viewfinder Monitor](#1-live-viewfinder-monitor)
+    - [2. Stream Synchronization (SYNC Button)](#2-stream-synchronization-sync-button)
+    - [3. Settings (Stream Mode \& Download Format)](#3-settings-stream-mode--download-format)
+    - [4. High-Framerate Recording (FHD 60p)](#4-high-framerate-recording-fhd-60p)
+    - [5. Recordings Gallery](#5-recordings-gallery)
+    - [6. Saving Directly to iPhone Photos / Camera Roll](#6-saving-directly-to-iphone-photos--camera-roll)
+    - [7. Deleting Clips](#7-deleting-clips)
+  - [Automated Failsafes \& Reliability](#automated-failsafes--reliability)
+    - [Phone Death \& Cable Disconnect Watchdog](#phone-death--cable-disconnect-watchdog)
+    - [App-Switch \& Screen-Lock Auto-Save](#app-switch--screen-lock-auto-save)
+    - [Sequential Transcode Queue (No CPU Starvation)](#sequential-transcode-queue-no-cpu-starvation)
+    - [Power-Loss \& Crash Recovery Loop](#power-loss--crash-recovery-loop)
+  - [Docker Management Commands](#docker-management-commands)
+  - [Backend API Reference](#backend-api-reference)
+  - [Project Structure](#project-structure)
 
 ---
 
@@ -79,12 +84,14 @@ Canopi is an ultra-low-latency electronic viewfinder (EVF) monitor and recording
 
 ## Quick Start (One-Command Setup)
 
-Setting up Canopi on a freshly installed Raspberry Pi OS (Debian/Ubuntu) requires only two commands:
+Setting up Canopi on a freshly installed Raspberry Pi OS Lite Bookworm (64bit) (Debian/Ubuntu) requires the following commands:
 
 ```bash
-git clone https://github.com/your-repo/canopi.git
+sudo apt update && sudo apt upgrade -y
+sudo apt install git -y
+git clone https://github.com/domi-fresh/canopi.git
 cd canopi
-./run.sh
+./run.sh # This may take a couple of minutes due to initial setup
 ```
 
 ### What `./run.sh` Automatically Does:
@@ -93,7 +100,8 @@ cd canopi
 3. Installs Docker and the Docker Compose plugin (if not already installed).
 4. Enables the Docker daemon to start automatically on system boot.
 5. Configures and enables a systemd service (`canopi.service`) ensuring the container auto-launches on boot.
-6. Builds the Alpine-based multi-arch container and starts Canopi in detached mode.
+6. Automatically applies a safe moderate overclock (`1.2GHz CPU`, `500MHz GPU`, `over_voltage=2`) in `config.txt` if a Raspberry Pi Zero 2 or Zero 2W is detected.
+7. Builds the Alpine-based multi-arch container and starts Canopi in detached mode.
 
 ---
 
