@@ -81,7 +81,6 @@ class CanopiHandler(SimpleHTTPRequestHandler):
 
                 cmd = [
                     "ffmpeg", "-hide_banner", "-loglevel", "error",
-                    "-framerate", "60",
                     "-i", "http://127.0.0.1:1984/api/stream.mjpeg?src=evf",
                     "-c:v", "copy",
                     filepath
