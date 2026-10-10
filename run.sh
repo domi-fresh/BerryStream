@@ -100,6 +100,17 @@ fi
 echo -e "${BLUE}==> Enabling Docker service to start on boot...${NC}"
 systemctl enable --now docker >/dev/null 2>&1 || true
 
+# Configure Docker DNS fallbacks to prevent container DNS lookup failures
+if [ ! -f /etc/docker/daemon.json ]; then
+  mkdir -p /etc/docker
+  cat << 'EOF' > /etc/docker/daemon.json
+{
+  "dns": ["1.1.1.1", "8.8.8.8"]
+}
+EOF
+  systemctl restart docker >/dev/null 2>&1 || true
+fi
+
 # Add the regular user to the docker group if run via sudo
 if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
   usermod -aG docker "$SUDO_USER" >/dev/null 2>&1 || true
@@ -154,8 +165,9 @@ systemctl enable canopi.service >/dev/null 2>&1
 echo -e "${GREEN}==> Boot auto-start service enabled successfully.${NC}"
 
 # 7. Build and launch container
-echo -e "${BLUE}==> Building and launching Canopi container...${NC}"
-$DOCKER_COMPOSE_CMD up -d --build
+echo -e "${BLUE}==> Building and launching Canopi container (using host network for build)...${NC}"
+$DOCKER_COMPOSE_CMD build --network=host || $DOCKER_COMPOSE_CMD build
+$DOCKER_COMPOSE_CMD up -d
 
 # 8. Success Banner & Instructions
 IP_HINT=$(ip -4 addr show usb0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "172.20.10.2")
