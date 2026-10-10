@@ -213,6 +213,26 @@
     }
     .btn-play { background: #00ff66; color: #000; }
     .btn-dl { background: rgba(255, 255, 255, 0.2); color: #fff; }
+    .btn-del {
+      width: 36px;
+      height: 36px;
+      min-width: 36px;
+      min-height: 36px;
+      background: #ff3344;
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-del:active {
+      transform: scale(0.92);
+      background: #cc2233;
+    }
     .btn-disabled { opacity: 0.35; pointer-events: none; }
 
     /* Video Player Overlay */
@@ -430,6 +450,14 @@
               <div class="card-actions">
                 <button class="btn-play ${item.ready ? '' : 'btn-disabled'}" onclick="playVideo('${item.mp4}')">PLAY</button>
                 <a class="btn-dl ${item.ready ? '' : 'btn-disabled'}" href="${item.mp4}" download>SAVE</a>
+                <button class="btn-del" onclick="deleteRecording('${item.id}', '${item.raw_name}')" title="Delete Recording">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                </button>
               </div>
             </div>
           `;
@@ -437,6 +465,26 @@
         });
       } catch (err) {
         console.error("Failed to load gallery:", err);
+      }
+    }
+
+    // Delete Recording with confirmation
+    async function deleteRecording(id, name) {
+      const confirmed = window.confirm(`Delete recording "${name}"?\n\nThis will permanently remove it from the Pi.`);
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch(`/api/record/delete?id=${encodeURIComponent(id)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'deleted') {
+          lastGalleryJson = "";
+          loadGallery();
+        } else {
+          alert("Failed to delete recording: " + (data.message || "File not found"));
+        }
+      } catch (err) {
+        console.error("Delete error:", err);
+        alert("Error deleting recording");
       }
     }
 

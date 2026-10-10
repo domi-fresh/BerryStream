@@ -6,7 +6,7 @@ import time
 import json
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 REC_DIR = "/app/recordings"
 THUMB_DIR = "/app/recordings/thumbs"
@@ -127,6 +127,30 @@ class CanopiHandler(SimpleHTTPRequestHandler):
                     })
             self._send_json({"items": items})
 
+        elif parsed.path == "/api/record/delete":
+            query = parse_qs(parsed.query)
+            clip_id = query.get("id", [None])[0]
+            if not clip_id or not re.match(r"^evf_[\w-]+$", clip_id):
+                self._send_json({"status": "error", "message": "Invalid clip ID"})
+                return
+
+            # Clean up all associated assets for this recording from disk
+            deleted = False
+            for target_path in [
+                os.path.join(REC_DIR, f"{clip_id}.mkv"),
+                os.path.join(MP4_DIR, f"{clip_id}.mp4"),
+                os.path.join(MP4_DIR, f"{clip_id}.tmp.mp4"),
+                os.path.join(THUMB_DIR, f"{clip_id}.jpg")
+            ]:
+                if os.path.exists(target_path):
+                    try:
+                        os.remove(target_path)
+                        deleted = True
+                    except OSError:
+                        pass
+
+            self._send_json({"status": "deleted" if deleted else "not_found", "id": clip_id})
+
         elif parsed.path.startswith("/media/"):
             parts = parsed.path.strip("/").split("/")
             if len(parts) == 3:
@@ -195,6 +219,9 @@ class CanopiHandler(SimpleHTTPRequestHandler):
 
         else:
             super().do_GET()
+
+    def do_POST(self):
+        self.do_GET()
 
     def _send_json(self, data):
         payload = json.dumps(data).encode("utf-8")
