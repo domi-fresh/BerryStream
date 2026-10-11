@@ -5,6 +5,7 @@ import subprocess
 import time
 import json
 import threading
+import shutil
 import urllib.request
 import urllib.parse
 from queue import Queue
@@ -32,8 +33,54 @@ STREAM_PRESETS = {
 DEFAULT_SETTINGS = {
     "stream_preset": "720p60",
     "download_format": "mp4",  # 'mp4' or 'mkv'
-    "auto_transcode": True     # True = transcode immediately; False = leave as raw MKV in field
+    "auto_transcode": True,    # True = transcode immediately; False = leave as raw MKV in field
+    "show_storage": True       # True = show storage info badge on live view
 }
+
+def get_storage_info():
+    """Returns disk storage usage for the recordings partition/filesystem."""
+    target_dir = REC_DIR if os.path.exists(REC_DIR) else "/"
+    try:
+        usage = shutil.disk_usage(target_dir)
+        total = usage.total
+        free = usage.free
+        used = usage.used
+    except Exception:
+        total = 0
+        free = 0
+        used = 0
+
+    total_gb = round(total / (1024 ** 3), 1) if total else 0
+    free_gb = round(free / (1024 ** 3), 1) if total else 0
+    used_gb = round(used / (1024 ** 3), 1) if total else 0
+    pct_used = round((used / total) * 100, 1) if total else 0
+    pct_free = round((free / total) * 100, 1) if total else 0
+
+    if free >= 10 * (1024 ** 3):
+        free_short = f"{free / (1024 ** 3):.0f}G"
+        free_human = f"{free / (1024 ** 3):.1f} GB"
+    elif free >= 1024 ** 3:
+        free_short = f"{free / (1024 ** 3):.1f}G"
+        free_human = f"{free / (1024 ** 3):.1f} GB"
+    elif free >= 1024 ** 2:
+        free_short = f"{free / (1024 ** 2):.0f}M"
+        free_human = f"{free / (1024 ** 2):.0f} MB"
+    else:
+        free_short = f"{free / 1024:.0f}K"
+        free_human = f"{free / 1024:.0f} KB"
+
+    return {
+        "total": total,
+        "used": used,
+        "free": free,
+        "total_gb": total_gb,
+        "used_gb": used_gb,
+        "free_gb": free_gb,
+        "percent_used": pct_used,
+        "percent_free": pct_free,
+        "free_human": free_human,
+        "free_short": free_short
+    }
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
@@ -380,7 +427,15 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/record/status":
             is_recording = current_process is not None and current_process.poll() is None
             elapsed = int(time.time() - start_time) if is_recording else 0
-            self._send_json({"recording": is_recording, "elapsed": elapsed, "file": current_raw_file})
+            self._send_json({
+                "recording": is_recording,
+                "elapsed": elapsed,
+                "file": current_raw_file,
+                "storage": get_storage_info()
+            })
+
+        elif parsed.path == "/api/storage":
+            self._send_json(get_storage_info())
 
         elif parsed.path == "/api/record/start":
             if current_process is None or current_process.poll() is not None:
@@ -623,6 +678,10 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                 new_settings["download_format"] = data["download_format"]
             if "auto_transcode" in data:
                 new_settings["auto_transcode"] = bool(data["auto_transcode"])
+            if "show_storage" in data:
+                new_settings["show_storage"] = bool(data["show_storage"])
+            if "hide_storage" in data:
+                new_settings["show_storage"] = not bool(data["hide_storage"])
 
             saved = save_settings(new_settings)
 

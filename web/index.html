@@ -291,6 +291,60 @@
       border-radius: 10px;
     }
 
+    /* Vertical Storage Indicator below Settings Button */
+    #storage-indicator {
+      top: calc(env(safe-area-inset-top, 16px) + 88px);
+      left: env(safe-area-inset-left, 18px);
+      width: 42px;
+      height: 68px;
+      padding: 6px 2px 5px 2px;
+      flex-direction: column;
+      gap: 3px;
+      border-radius: 10px;
+    }
+    .storage-icon {
+      color: rgba(255, 255, 255, 0.65);
+      flex-shrink: 0;
+    }
+    .storage-gauge {
+      width: 5px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .storage-gauge-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      height: 100%;
+      background: #00ff66;
+      border-radius: 3px;
+      transition: height 0.4s ease, background-color 0.4s ease;
+    }
+    .storage-val {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      letter-spacing: -0.2px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .storage-lbl {
+      font-size: 7.5px;
+      font-weight: 700;
+      color: #888;
+      line-height: 1;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
     /* Full-screen Settings View Overlay */
     #settings-view {
       position: fixed;
@@ -520,6 +574,20 @@
       </svg>
     </button>
 
+    <div id="storage-indicator" class="ctrl-btn" onclick="toggleStorageDisplay()" title="Pi Storage">
+      <svg class="storage-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4a2 2 0 0 1 2-2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"></path>
+        <line x1="8" y1="6" x2="8" y2="8"></line>
+        <line x1="11" y1="6" x2="11" y2="8"></line>
+        <line x1="14" y1="6" x2="14" y2="8"></line>
+      </svg>
+      <div class="storage-gauge">
+        <div id="storage-gauge-fill" class="storage-gauge-fill"></div>
+      </div>
+      <span id="storage-free-val" class="storage-val">--</span>
+      <span id="storage-lbl" class="storage-lbl">FREE</span>
+    </div>
+
     <button id="rec-btn" class="ctrl-btn" onclick="toggleRecord()">
       <div id="rec-dot"></div>
       <span id="rec-text">REC</span>
@@ -619,6 +687,29 @@
           </label>
         </div>
       </div>
+
+      <!-- Section 4: Storage Indicator -->
+      <div class="settings-section">
+        <div class="section-title">Storage Indicator</div>
+        <div class="section-desc">On-Screen Pi Disk Free Space Display</div>
+        <div class="options-group">
+          <label class="toggle-row" id="show-storage-row">
+            <div class="toggle-text">
+              <div class="toggle-header">
+                <span class="toggle-label">Show Storage Indicator</span>
+                <span id="storage-status-pill" class="status-pill active">ON</span>
+              </div>
+              <span class="toggle-desc" id="show-storage-desc">
+                Display remaining Pi storage space below the settings button. Turn off to hide.
+              </span>
+            </div>
+            <div class="ios-switch">
+              <input type="checkbox" id="show-storage-checkbox" onchange="onStorageToggle(this.checked)">
+              <span class="ios-switch-slider"></span>
+            </div>
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -657,11 +748,12 @@
     let galleryPollTimer = null;
     let lastGalleryJson = "";
 
-    // Application Settings (Stream Presets, Download Format, Auto Transcode)
+    // Application Settings (Stream Presets, Download Format, Auto Transcode, Show Storage)
     let currentSettings = {
       stream_preset: "720p60",
       download_format: "mp4",
-      auto_transcode: true
+      auto_transcode: true,
+      show_storage: true
     };
 
     async function loadSettings() {
@@ -705,6 +797,25 @@
       if (autoTranscodeRow) {
         autoTranscodeRow.classList.toggle('active', isAuto);
       }
+
+      const showStorageCheckbox = document.getElementById('show-storage-checkbox');
+      const storageStatusPill = document.getElementById('storage-status-pill');
+      const showStorageRow = document.getElementById('show-storage-row');
+      const isShowStorage = currentSettings.show_storage !== false;
+
+      if (showStorageCheckbox) showStorageCheckbox.checked = isShowStorage;
+      if (storageStatusPill) {
+        storageStatusPill.textContent = isShowStorage ? 'ON' : 'OFF';
+        storageStatusPill.classList.toggle('active', isShowStorage);
+      }
+      if (showStorageRow) {
+        showStorageRow.classList.toggle('active', isShowStorage);
+      }
+
+      const storageIndicator = document.getElementById('storage-indicator');
+      if (storageIndicator) {
+        storageIndicator.style.display = isShowStorage ? 'flex' : 'none';
+      }
     }
 
     async function onAutoTranscodeToggle(enabled) {
@@ -727,6 +838,100 @@
         lastGalleryJson = "";
       } catch(e) {
         console.error("Failed to update auto transcode setting:", e);
+      }
+    }
+
+    async function onStorageToggle(enabled) {
+      currentSettings.show_storage = enabled;
+      localStorage.setItem('berrystream_settings', JSON.stringify(currentSettings));
+      updateSettingsUI();
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ show_storage: enabled })
+        });
+        const data = await res.json();
+        if (data.settings) {
+          currentSettings = { ...currentSettings, ...data.settings };
+          updateSettingsUI();
+        }
+      } catch(e) {
+        console.error("Failed to update storage setting:", e);
+      }
+    }
+
+    // Pi Storage Indicator state & polling
+    let lastStorageData = null;
+    let storageDisplayMode = 'size'; // 'size' or 'percent'
+    let storagePollTimer = null;
+
+    async function fetchStorageInfo() {
+      try {
+        const res = await fetch('/api/storage');
+        if (!res.ok) return;
+        const data = await res.json();
+        lastStorageData = data;
+        updateStorageUI(data);
+      } catch(e) {}
+    }
+
+    function updateStorageUI(data) {
+      if (!data) return;
+      const el = document.getElementById('storage-indicator');
+      const val = document.getElementById('storage-free-val');
+      const lbl = document.getElementById('storage-lbl');
+      const gaugeFill = document.getElementById('storage-gauge-fill');
+      if (!el || !val || !gaugeFill) return;
+
+      const pctFree = Math.max(0, Math.min(100, Math.round(data.percent_free ?? 100)));
+      gaugeFill.style.height = `${pctFree}%`;
+
+      if (storageDisplayMode === 'percent') {
+        val.textContent = `${pctFree}%`;
+      } else {
+        val.textContent = data.free_short || '--';
+      }
+
+      if (lbl) lbl.textContent = 'FREE';
+
+      // Visual color cues: green = plenty, amber = warning (<= 20%), red = critical (<= 10%)
+      if (pctFree <= 10) {
+        gaugeFill.style.backgroundColor = '#ff3344';
+        val.style.color = '#ff3344';
+      } else if (pctFree <= 20) {
+        gaugeFill.style.backgroundColor = '#ffaa00';
+        val.style.color = '#ffaa00';
+      } else {
+        gaugeFill.style.backgroundColor = '#00ff66';
+        val.style.color = '#ffffff';
+      }
+
+      const totalGb = data.total_gb !== undefined ? `${data.total_gb} GB` : '';
+      const freeStr = data.free_human || (data.free_gb !== undefined ? `${data.free_gb} GB` : '');
+      el.title = `Storage: ${freeStr} free of ${totalGb} (${pctFree}% free)`;
+    }
+
+    function toggleStorageDisplay() {
+      storageDisplayMode = (storageDisplayMode === 'size') ? 'percent' : 'size';
+      if (lastStorageData) {
+        updateStorageUI(lastStorageData);
+      }
+      fetchStorageInfo();
+    }
+
+    function startStoragePolling() {
+      if (!storagePollTimer) {
+        fetchStorageInfo();
+        storagePollTimer = setInterval(fetchStorageInfo, 10000);
+      }
+    }
+
+    function stopStoragePolling() {
+      if (storagePollTimer) {
+        clearInterval(storagePollTimer);
+        storagePollTimer = null;
       }
     }
 
@@ -886,6 +1091,10 @@
       try {
         const res = await fetch('/api/record/status');
         const data = await res.json();
+        if (data.storage) {
+          lastStorageData = data.storage;
+          updateStorageUI(data.storage);
+        }
         if (data.recording) {
           isRecording = true;
           recBtn.classList.add('recording');
@@ -932,6 +1141,7 @@
         recTimer = null;
         recBtn.classList.remove('recording');
         recText.textContent = 'REC';
+        fetchStorageInfo();
       }
     }
 
@@ -1153,6 +1363,7 @@
         if (data.status === 'deleted') {
           lastGalleryJson = "";
           loadGallery();
+          fetchStorageInfo();
         } else {
           alert("Failed to delete recording: " + (data.message || "File not found"));
         }
@@ -1195,6 +1406,7 @@
         viewportContainer.style.display = 'flex';
         startLiveStream();
         syncRecordStatus();
+        startStoragePolling();
       }
     });
   </script>

@@ -148,6 +148,9 @@ docker compose up -d # This may take a couple of minutes due to initial setup
   - **Download Settings:** Choose between download and gallery display formats:
     - `MP4` *(Default: Transcoded H.264, compact file size, native iPhone Photos compatibility)*.
     - `MKV` *(Raw uncompressed MJPEG camera dump for maximum archival quality)*.
+  - **Storage Indicator:**
+    - Displays a sleek vertical indicator below the settings button showing remaining storage space on the Pi (with real-time vertical meter and color warnings: green > 20%, amber 10–20%, red < 10%).
+    - A dedicated toggle in Settings allows showing or hiding this on-screen info. Tapping the indicator on the monitor refreshes storage and toggles between free capacity (e.g. `14G`) and free percentage (`48%`).
 
 ### 4. High-Framerate Recording (FHD 60p)
 - Tap the red **REC** button in the top-right corner to start recording.
@@ -232,14 +235,15 @@ docker compose up -d --build
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/record/status` | `GET` | Returns active recording status, elapsed time, and current filename. |
+| `/api/record/status` | `GET` | Returns active recording status, elapsed time, current filename, and disk storage usage. |
 | `/api/record/start` | `GET` | Starts raw MKV recording from `go2rtc`. |
 | `/api/record/stop` | `GET / POST` | Finalizes active recording and conditionally enqueues MP4 transcode if auto-transcode is enabled. |
 | `/api/record/ping` | `GET` | Heartbeat endpoint for the client watchdog. |
 | `/api/record/delete?id={id}` | `GET / POST` | Deletes raw MKV, MP4, temp files, and thumbnail from disk. |
 | `/api/gallery` | `GET` | Lists all recordings with thumbnail paths, sizes, readiness, and encoding progress. |
-| `/api/settings` | `GET` | Retrieves current settings (`stream_preset`, `download_format`, `auto_transcode`) and supported stream presets. |
-| `/api/settings` | `POST` | Updates stream presets, download formats, and toggles automatic transcoding. |
+| `/api/storage` | `GET` | Returns real-time disk storage statistics (total, used, free bytes, percentages, and human-readable strings). |
+| `/api/settings` | `GET` | Retrieves current settings (`stream_preset`, `download_format`, `auto_transcode`, `show_storage`) and supported stream presets. |
+| `/api/settings` | `POST` | Updates stream presets, download formats, transcoding, and storage indicator visibility. |
 | `/api/transcode` | `GET / POST` | Manually enqueues an individual recording (`?id={id}`) or all orphaned MKVs for transcoding. |
 | `/media/thumb/{file}` | `GET` | Serves preview JPEG thumbnails. |
 | `/media/mp4/{file}` | `GET` | Streams MP4 video with HTTP 206 Byte-Range support for Safari. |

@@ -50,11 +50,118 @@ class TestAutoTranscode(unittest.TestCase):
             shutil.rmtree(TEST_DIR, ignore_errors=True)
 
     def test_default_settings(self):
-        """Verify default settings include auto_transcode: True."""
+        """Verify default settings include auto_transcode: True and show_storage: True."""
         settings = server.load_settings()
         self.assertTrue(settings.get("auto_transcode"))
         self.assertEqual(settings.get("stream_preset"), "720p60")
         self.assertEqual(settings.get("download_format"), "mp4")
+        self.assertTrue(settings.get("show_storage"))
+
+    def test_save_and_load_storage_setting(self):
+        """Verify saving show_storage as False and loading it back."""
+        server.save_settings({"show_storage": False})
+        settings = server.load_settings()
+        self.assertFalse(settings.get("show_storage"))
+
+        server.save_settings({"show_storage": True})
+        settings = server.load_settings()
+        self.assertTrue(settings.get("show_storage"))
+
+    @patch("shutil.disk_usage")
+    def test_get_storage_info_calculation(self, mock_usage):
+        """Verify get_storage_info formats disk usage and percentages correctly."""
+        # 32GB total, 16GB free, 16GB used
+        total = 32 * 1024 * 1024 * 1024
+        free = 16 * 1024 * 1024 * 1024
+        used = 16 * 1024 * 1024 * 1024
+        mock_usage.return_value = MagicMock(total=total, free=free, used=used)
+
+        info = server.get_storage_info()
+        self.assertEqual(info["total_gb"], 32.0)
+        self.assertEqual(info["free_gb"], 16.0)
+        self.assertEqual(info["used_gb"], 16.0)
+        self.assertEqual(info["percent_free"], 50.0)
+        self.assertEqual(info["percent_used"], 50.0)
+        self.assertEqual(info["free_short"], "16G")
+        self.assertEqual(info["free_human"], "16.0 GB")
+
+    @patch("shutil.disk_usage")
+    def test_get_storage_info_low_space(self, mock_usage):
+        """Verify get_storage_info formats MB and small GB correctly."""
+        # 32GB total, 500MB free
+        total = 32 * 1024 * 1024 * 1024
+        free = 500 * 1024 * 1024
+        used = total - free
+        mock_usage.return_value = MagicMock(total=total, free=free, used=used)
+
+        info = server.get_storage_info()
+        self.assertEqual(info["free_short"], "500M")
+        self.assertEqual(info["free_human"], "500 MB")
+
+    @patch("server.get_storage_info")
+    def test_storage_api_endpoint(self, mock_storage_info):
+        """Verify /api/storage endpoint returns storage info."""
+        mock_storage_info.return_value = {"free_gb": 12.5, "free_short": "13G", "percent_free": 45.0}
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/storage"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertEqual(resp.get("free_gb"), 12.5)
+        self.assertEqual(resp.get("free_short"), "13G")
+
+    @patch("server.get_storage_info")
+    def test_record_status_includes_storage(self, mock_storage_info):
+        """Verify /api/record/status includes storage info in response."""
+        mock_storage_info.return_value = {"free_gb": 12.5, "free_short": "13G"}
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/record/status"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertIn("storage", resp)
+        self.assertEqual(resp["storage"]["free_short"], "13G")
+
+    def test_post_settings_show_storage(self):
+        """Verify /api/settings handles toggling show_storage setting."""
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {"Content-Length": "23"}
+        handler.rfile = MagicMock()
+        handler.rfile.read.return_value = json.dumps({"show_storage": False}).encode("utf-8")
+        handler.path = "/api/settings"
+        handler._send_json = MagicMock()
+
+        handler.do_POST()
+
+        self.assertFalse(server.load_settings().get("show_storage"))
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertFalse(resp["settings"]["show_storage"])
+
+    def test_post_settings_hide_storage(self):
+        """Verify /api/settings handles hide_storage parameter correctly."""
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {"Content-Length": "22"}
+        handler.rfile = MagicMock()
+        handler.rfile.read.return_value = json.dumps({"hide_storage": True}).encode("utf-8")
+        handler.path = "/api/settings"
+        handler._send_json = MagicMock()
+
+        handler.do_POST()
+
+        self.assertFalse(server.load_settings().get("show_storage"))
+        resp = handler._send_json.call_args[0][0]
+        self.assertFalse(resp["settings"]["show_storage"])
 
     def test_save_and_load_settings(self):
         """Verify saving auto_transcode as False and loading it back."""
