@@ -152,10 +152,10 @@ docker compose up -d # This may take a couple of minutes due to initial setup
     - Displays a sleek vertical indicator below the settings button showing remaining storage space on the Pi (with real-time vertical meter and color warnings: green > 20%, amber 10–20%, red < 10%).
     - A dedicated toggle in Settings allows showing or hiding this on-screen info. Tapping the indicator on the monitor refreshes storage and toggles between free capacity (e.g. `14G`) and free percentage (`48%`).
 
-### 4. High-Framerate Recording (FHD 60p)
+### 4. High-Framerate Recording
 - Tap the red **REC** button in the top-right corner to start recording.
 - The button glows red and displays the live elapsed recording time (`MM:SS`).
-- Tap **REC** again to stop. The raw capture is finalized, and a low-priority background worker transcodes the video to web-safe MP4 matching the stream framerate (60 fps).
+- Tap **REC** again to stop. The raw capture is finalized, and a low-priority background worker transcodes the video to web-safe MP4 matching the stream framerate.
 
 ### 5. Recordings Gallery
 - Tap **GALLERY** in the bottom-right corner to open the recordings view.
@@ -167,7 +167,7 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 - **Batch / Single Transcoding:** If any clips were recorded with auto-transcode disabled, tap **CONVERT** on individual cards or **CONVERT ALL** in the header to transcode them on demand.
 
 ### 6. Saving Directly to iPhone Photos / Camera Roll
-- Tap **SAVE** on any clip card.
+- Tap **SAVE** on any clip card. -> tap **more**
 - Instead of downloading to generic files, BerryStream invokes the native **iOS Share Sheet**.
 - The share sheet presents **Save Video**, which saves the `.mp4` file directly into your iPhone's **Apple Photos app (Camera Roll)**.
 - Once saved or dismissed, the sheet slides down and you remain seamlessly in the gallery.
