@@ -143,8 +143,8 @@ docker compose up -d # This may take a couple of minutes due to initial setup
   - **Stream Settings:** Choose between live capture presets dynamically:
     - `720p 60fps` *(Default / Recommended for Pi Zero 2W: Smooth 60p with zero USB bus congestion)*.
     - `720p 30fps` *(Ultra-low bandwidth and maximum power saving)*.
-    - `1080p 30fps` *(Full HD cinema quality with reduced USB bandwidth)*.
-    - `1080p 60fps` *(Native Full HD for high-speed USB architectures like Pi 4 / Pi 5)*.
+    - `1080p 30fps` *(Full HD quality with reduced USB bandwidth)*.
+    - `1080p 60fps` *(Native Full HD recommended for Pi 4 / Pi 5)*.
   - **Transcoding (Battery Saving Mode):**
     - `Automatic Transcoding (ON / Default)`: Transcodes raw MKVs to web-optimized MP4 immediately after each take completes.
     - `Field Mode (OFF)`: Saves only the raw `.mkv` files without starting background CPU-intensive FFmpeg transcoding, maximizing battery life while in the field. Once turned back ON (e.g. at home plugged into the wall), all orphaned MKVs are automatically detected and transcoded sequentially.
@@ -155,10 +155,10 @@ docker compose up -d # This may take a couple of minutes due to initial setup
     - Displays a sleek vertical indicator below the settings button showing remaining storage space on the Pi (with real-time vertical meter and color warnings: green > 20%, amber 10–20%, red < 10%).
     - A dedicated toggle in Settings allows showing or hiding this on-screen info. Tapping the indicator on the monitor refreshes storage and toggles between free capacity (e.g. `14G`) and free percentage (`48%`).
 
-### 4. High-Framerate Recording (FHD 60p)
+### 4. High-Framerate Recording
 - Tap the red **REC** button in the top-right corner to start recording.
 - The button glows red and displays the live elapsed recording time (`MM:SS`).
-- Tap **REC** again to stop. The raw capture is finalized, and a low-priority background worker transcodes the video to web-safe MP4 matching the stream framerate (60 fps).
+- Tap **REC** again to stop. The raw capture is finalized, and a low-priority background worker transcodes the video to web-safe MP4 matching the stream framerate.
 
 ### 5. Recordings Gallery
 - Tap **GALLERY** in the bottom-right corner to open the recordings view.
@@ -170,7 +170,7 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 - **Batch / Single Transcoding:** If any clips were recorded with auto-transcode disabled, tap **CONVERT** on individual cards or **CONVERT ALL** in the header to transcode them on demand.
 
 ### 6. Saving Directly to iPhone Photos / Camera Roll
-- Tap **SAVE** on any clip card.
+- Tap **SAVE** on any clip card. -> tap **more**
 - Instead of downloading to generic files, BerryStream invokes the native **iOS Share Sheet**.
 - The share sheet presents **Save Video**, which saves the `.mp4` file directly into your iPhone's **Apple Photos app (Camera Roll)**.
 - Once saved or dismissed, the sheet slides down and you remain seamlessly in the gallery.
