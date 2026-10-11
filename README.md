@@ -140,8 +140,8 @@ docker compose up -d # This may take a couple of minutes due to initial setup
   - **Stream Settings:** Choose between live capture presets dynamically:
     - `720p 60fps` *(Default / Recommended for Pi Zero 2W: Smooth 60p with zero USB bus congestion)*.
     - `720p 30fps` *(Ultra-low bandwidth and maximum power saving)*.
-    - `1080p 30fps` *(Full HD cinema quality with reduced USB bandwidth)*.
-    - `1080p 60fps` *(Native Full HD for high-speed USB architectures like Pi 4 / Pi 5)*.
+    - `1080p 30fps` *(Full HD quality with reduced USB bandwidth)*.
+    - `1080p 60fps` *(Native Full HD recommended for Pi 4 / Pi 5)*.
   - **Transcoding (Battery Saving Mode):**
     - `Automatic Transcoding (ON / Default)`: Transcodes raw MKVs to web-optimized MP4 immediately after each take completes.
     - `Field Mode (OFF)`: Saves only the raw `.mkv` files without starting background CPU-intensive FFmpeg transcoding, maximizing battery life while in the field. Once turned back ON (e.g. at home plugged into the wall), all orphaned MKVs are automatically detected and transcoded sequentially.
