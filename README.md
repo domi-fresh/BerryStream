@@ -128,7 +128,10 @@ docker compose up -d # This may take a couple of minutes due to initial setup
 
 ### 1. Live Viewfinder Monitor
 - Displays the camera stream with near-zero latency (~40–60ms).
-- Top-left HUD displays connection health (`USB LINK • LIVE`).
+- Top-left HUD displays dual real-time connection health indicators (Phone ↔ Raspberry Pi ↔ Camera):
+  - **Full Link Active:** Green Phone → Green Bar → Green Raspberry Pi → Green Bar → Green Camera.
+  - **Phone Disconnected from Pi:** Yellow Phone → Red Cross → Red Raspberry Pi → Grey Bar → Grey Camera.
+  - **Pi Connected, No Camera/Source:** Green Phone → Green Bar → Green Raspberry Pi → Red Cross → Red Camera.
 - Automatic screen wake lock keeps your iPhone OLED display illuminated while monitoring.
 
 ### 2. Stream Synchronization (SYNC Button)

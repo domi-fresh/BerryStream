@@ -44,16 +44,85 @@
       position: absolute;
       top: env(safe-area-inset-top, 16px);
       left: env(safe-area-inset-left, 18px);
-      background: rgba(0, 0, 0, 0.65);
-      color: #00ff66;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: 6px;
-      pointer-events: none;
+      background: rgba(18, 18, 18, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      height: 32px;
+      padding: 0 10px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      user-select: none;
+      -webkit-user-select: none;
     }
-    .hud-alert { color: #ff3344 !important; }
+
+    .conn-node {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.25s ease, filter 0.25s ease;
+    }
+    .conn-node.conn-green {
+      color: #00ff66;
+      filter: drop-shadow(0 0 5px rgba(0, 255, 102, 0.45));
+    }
+    .conn-node.conn-yellow {
+      color: #ffcc00;
+      filter: drop-shadow(0 0 5px rgba(255, 204, 0, 0.45));
+    }
+    .conn-node.conn-red {
+      color: #ff3344;
+      filter: drop-shadow(0 0 5px rgba(255, 51, 68, 0.55));
+    }
+    .conn-node.conn-grey {
+      color: rgba(255, 255, 255, 0.3);
+      filter: none;
+    }
+
+    .conn-icon {
+      width: 15px;
+      height: 15px;
+      display: block;
+    }
+
+    .conn-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      transition: color 0.25s ease, filter 0.25s ease;
+    }
+    .conn-link.conn-bar::before {
+      content: '';
+      display: block;
+      width: 12px;
+      height: 2.5px;
+      border-radius: 2px;
+      transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+    .conn-link.conn-bar.conn-green::before {
+      background: #00ff66;
+      box-shadow: 0 0 6px rgba(0, 255, 102, 0.6);
+    }
+    .conn-link.conn-bar.conn-grey::before {
+      background: rgba(255, 255, 255, 0.3);
+      box-shadow: none;
+    }
+    .conn-link.conn-cross {
+      color: #ff3344;
+      filter: drop-shadow(0 0 4px rgba(255, 51, 68, 0.6));
+    }
+    .conn-cross-icon {
+      width: 11px;
+      height: 11px;
+      display: block;
+    }
 
     .ctrl-btn {
       position: absolute;
@@ -565,7 +634,36 @@
 <body>
 
   <div id="viewport-container">
-    <div id="hud">USB LINK • LIVE</div>
+    <div id="hud" title="Live Link Status">
+      <span id="conn-phone" class="conn-node conn-green" title="Phone">
+        <svg class="conn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+      </span>
+      <span id="conn-link-phone-pi" class="conn-link conn-bar conn-green"></span>
+      <span id="conn-pi" class="conn-node conn-green" title="Raspberry Pi">
+        <svg class="conn-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 1.5c-1 2.2-2.8 3-5 2.5 1 2.5 3.2 3.2 5 3 1.8.2 4-.5 5-3-2.2.5-4-.3-5-2.5z" />
+          <circle cx="8" cy="10" r="2.5" />
+          <circle cx="12" cy="9.5" r="2.5" />
+          <circle cx="16" cy="10" r="2.5" />
+          <circle cx="6.5" cy="14.5" r="2.5" />
+          <circle cx="12" cy="14.5" r="2.7" />
+          <circle cx="17.5" cy="14.5" r="2.5" />
+          <circle cx="9" cy="19" r="2.3" />
+          <circle cx="15" cy="19" r="2.3" />
+          <circle cx="12" cy="22" r="1.8" />
+        </svg>
+      </span>
+      <span id="conn-link-pi-cam" class="conn-link conn-bar conn-green"></span>
+      <span id="conn-cam" class="conn-node conn-green" title="Camera">
+        <svg class="conn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </span>
+    </div>
 
     <button id="settings-btn" class="ctrl-btn" onclick="openSettings()" title="Settings">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -747,6 +845,64 @@
     let secondsElapsed = 0;
     let galleryPollTimer = null;
     let lastGalleryJson = "";
+
+    const SVG_CROSS = `<svg class="conn-cross-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2.5" y1="2.5" x2="11.5" y2="11.5"></line><line x1="11.5" y1="2.5" x2="2.5" y2="11.5"></line></svg>`;
+
+    let phoneConnected = true;
+    let serverCameraConnected = null;
+    let streamLoaded = false;
+    let streamError = false;
+    let statusPollTimer = null;
+
+    function updateConnectionUI(phoneOk, cameraOk) {
+      const phoneEl = document.getElementById('conn-phone');
+      const link1El = document.getElementById('conn-link-phone-pi');
+      const piEl = document.getElementById('conn-pi');
+      const link2El = document.getElementById('conn-link-pi-cam');
+      const camEl = document.getElementById('conn-cam');
+      const hudEl = document.getElementById('hud');
+      if (!phoneEl || !link1El || !piEl || !link2El || !camEl) return;
+
+      if (!phoneOk) {
+        // State 2: Connection between phone and Pi is not given
+        // Phone: yellow, Link 1: red cross, Pi: red, Link 2: grey bar, Camera: grey
+        phoneEl.className = 'conn-node conn-yellow';
+        link1El.className = 'conn-link conn-cross conn-red';
+        link1El.innerHTML = SVG_CROSS;
+        piEl.className = 'conn-node conn-red';
+        link2El.className = 'conn-link conn-bar conn-grey';
+        link2El.innerHTML = '';
+        camEl.className = 'conn-node conn-grey';
+        if (hudEl) hudEl.title = 'Phone disconnected from Raspberry Pi';
+      } else if (!cameraOk) {
+        // State 3: Connection between phone and Pi established, but no camera/source found
+        // Phone: green, Link 1: green bar, Pi: green, Link 2: red cross, Camera: red
+        phoneEl.className = 'conn-node conn-green';
+        link1El.className = 'conn-link conn-bar conn-green';
+        link1El.innerHTML = '';
+        piEl.className = 'conn-node conn-green';
+        link2El.className = 'conn-link conn-cross conn-red';
+        link2El.innerHTML = SVG_CROSS;
+        camEl.className = 'conn-node conn-red';
+        if (hudEl) hudEl.title = 'Raspberry Pi connected, but no video source detected';
+      } else {
+        // State 1: Phone connected to Pi and Pi connected to camera
+        // Phone: green, Link 1: green bar, Pi: green, Link 2: green bar, Camera: green
+        phoneEl.className = 'conn-node conn-green';
+        link1El.className = 'conn-link conn-bar conn-green';
+        link1El.innerHTML = '';
+        piEl.className = 'conn-node conn-green';
+        link2El.className = 'conn-link conn-bar conn-green';
+        link2El.innerHTML = '';
+        camEl.className = 'conn-node conn-green';
+        if (hudEl) hudEl.title = 'Live Link Active: Phone • Pi • Camera';
+      }
+    }
+
+    function syncConnectionState() {
+      const cameraOk = phoneConnected && (serverCameraConnected !== false) && streamLoaded && !streamError;
+      updateConnectionUI(phoneConnected, cameraOk);
+    }
 
     // Application Settings (Stream Presets, Download Format, Auto Transcode, Show Storage)
     let currentSettings = {
@@ -969,8 +1125,8 @@
 
       if (type === 'stream_preset' && value !== prevStreamPreset) {
         if (!isGalleryView) {
-          hud.textContent = "SWITCHING RESOLUTION...";
-          hud.classList.remove('hud-alert');
+          streamLoaded = false;
+          syncConnectionState();
           // Disconnect active socket in Safari
           streamImg.src = "";
           setTimeout(() => {
@@ -999,8 +1155,9 @@
 
     streamImg.onerror = () => {
       if (isGalleryView) return;
-      hud.textContent = "SIGNAL LOST • RETRYING";
-      hud.classList.add('hud-alert');
+      streamLoaded = false;
+      streamError = true;
+      syncConnectionState();
       setTimeout(() => {
         if (!isGalleryView) {
           streamImg.src = `${getStreamUrl()}&t=${Date.now()}`;
@@ -1009,8 +1166,9 @@
     };
 
     streamImg.onload = () => {
-      hud.textContent = "USB LINK • LIVE";
-      hud.classList.remove('hud-alert');
+      streamLoaded = true;
+      streamError = false;
+      syncConnectionState();
     };
 
     // Explicit Session Sync (Universal cross-browser reset)
@@ -1022,6 +1180,7 @@
 
     // Clean Session Navigation (Tears down Safari socket pools & decoders)
     function openGallery() {
+      stopStatusPolling();
       if (isRecording) {
         stopRecordingFailsafe();
       }
@@ -1086,11 +1245,19 @@
     }
     requestWakeLock();
 
-    // Sync recording status from server
+    // Sync recording status and connection health from server
     async function syncRecordStatus() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
       try {
-        const res = await fetch('/api/record/status');
+        const res = await fetch('/api/record/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
+        phoneConnected = true;
+        if (data.camera_connected !== undefined) {
+          serverCameraConnected = data.camera_connected;
+        }
         if (data.storage) {
           lastStorageData = data.storage;
           updateStorageUI(data.storage);
@@ -1111,9 +1278,46 @@
               recText.textContent = `${m}:${s}`;
             }, 1000);
           }
+        } else {
+          if (isRecording) {
+            isRecording = false;
+            clearInterval(recTimer);
+            stopHeartbeat();
+            recTimer = null;
+            recBtn.classList.remove('recording');
+            recText.textContent = 'REC';
+          }
         }
-      } catch(e) {}
+        syncConnectionState();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        phoneConnected = false;
+        syncConnectionState();
+      }
     }
+
+    function startStatusPolling() {
+      if (!statusPollTimer) {
+        syncRecordStatus();
+        statusPollTimer = setInterval(syncRecordStatus, 2000);
+      }
+    }
+
+    function stopStatusPolling() {
+      if (statusPollTimer) {
+        clearInterval(statusPollTimer);
+        statusPollTimer = null;
+      }
+    }
+
+    window.addEventListener('offline', () => {
+      phoneConnected = false;
+      syncConnectionState();
+    });
+
+    window.addEventListener('online', () => {
+      syncRecordStatus();
+    });
 
     // Toggle Record
     async function toggleRecord() {
@@ -1405,7 +1609,7 @@
         galleryView.classList.remove('active');
         viewportContainer.style.display = 'flex';
         startLiveStream();
-        syncRecordStatus();
+        startStatusPolling();
         startStoragePolling();
       }
     });

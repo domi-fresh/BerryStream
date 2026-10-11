@@ -132,6 +132,49 @@ class TestAutoTranscode(unittest.TestCase):
         self.assertIn("storage", resp)
         self.assertEqual(resp["storage"]["free_short"], "13G")
 
+    @patch("server.is_camera_connected")
+    def test_record_status_includes_camera_connected(self, mock_camera_conn):
+        """Verify /api/record/status includes camera_connected in response."""
+        mock_camera_conn.return_value = True
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/record/status"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertIn("camera_connected", resp)
+        self.assertTrue(resp["camera_connected"])
+
+    @patch("os.path.exists")
+    def test_is_camera_connected(self, mock_exists):
+        """Verify is_camera_connected checks video device existence."""
+        mock_exists.return_value = True
+        self.assertTrue(server.is_camera_connected())
+
+        mock_exists.return_value = False
+        self.assertFalse(server.is_camera_connected())
+
+    @patch("server.is_camera_connected")
+    def test_connection_status_endpoint(self, mock_camera_conn):
+        """Verify /api/connection/status returns phone and camera status."""
+        mock_camera_conn.return_value = True
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/connection/status"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertTrue(resp.get("phone"))
+        self.assertTrue(resp.get("camera_connected"))
+
     def test_post_settings_show_storage(self):
         """Verify /api/settings handles toggling show_storage setting."""
         handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)

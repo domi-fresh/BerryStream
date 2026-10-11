@@ -82,6 +82,11 @@ def get_storage_info():
         "free_short": free_short
     }
 
+def is_camera_connected():
+    """Checks whether the video capture source device is connected to the Pi."""
+    device = os.environ.get("VIDEO_DEVICE", "/dev/video0")
+    return os.path.exists(device)
+
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -431,7 +436,14 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                 "recording": is_recording,
                 "elapsed": elapsed,
                 "file": current_raw_file,
-                "storage": get_storage_info()
+                "storage": get_storage_info(),
+                "camera_connected": is_camera_connected()
+            })
+
+        elif parsed.path in ("/api/connection/status", "/api/camera/status"):
+            self._send_json({
+                "phone": True,
+                "camera_connected": is_camera_connected()
             })
 
         elif parsed.path == "/api/storage":
