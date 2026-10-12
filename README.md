@@ -277,3 +277,8 @@ BerryStream/
     ├── icon-512.png         # Web app manifest icon (512x512)
     └── index.html           # Full-screen Mobile Safari PWA client interface
 ```
+
+
+
+# TODOs
+- when "auto transcode toggle" is "off" during reccordings with fps=30 and then one switches to fps=60 and autotranscoding "on", the older 30fps recordings get transcoded with 60fps and vice versa
