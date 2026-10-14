@@ -455,6 +455,38 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      transition: opacity 0.2s ease, filter 0.2s ease;
+    }
+    .settings-section.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+      filter: grayscale(0.85);
+      cursor: not-allowed;
+    }
+    .settings-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .source-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .source-badge.picam {
+      background: rgba(0, 180, 255, 0.2);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .source-badge.evf {
+      background: rgba(0, 255, 102, 0.15);
+      color: #00ff66;
+      border: 1px solid rgba(0, 255, 102, 0.3);
     }
     .section-title {
       font-size: 13px;
@@ -741,7 +773,41 @@
         </div>
       </div>
 
-      <!-- Section 2: Transcoding Settings -->
+      <!-- Section 2: Onboard Camera Settings -->
+      <div class="settings-section" id="onboard-camera-section">
+        <div class="settings-section-header">
+          <div class="section-title">Onboard Camera Recording</div>
+          <span id="onboard-cam-badge" class="status-pill">NOT DETECTED</span>
+        </div>
+        <div class="section-desc" id="onboard-camera-desc">Raspberry Pi CSI Camera Module</div>
+        
+        <div class="options-group">
+          <label class="toggle-row" id="onboard-record-row">
+            <div class="toggle-text">
+              <div class="toggle-header">
+                <span class="toggle-label">Simultaneous Recording</span>
+                <span id="onboard-record-status-pill" class="status-pill">OFF</span>
+              </div>
+              <span class="toggle-desc" id="onboard-record-desc">
+                Simultaneously record the Raspberry Pi camera feed when pressing REC.
+              </span>
+            </div>
+            <div class="ios-switch">
+              <input type="checkbox" id="onboard-record-checkbox" onchange="onOnboardRecordToggle(this.checked)">
+              <span class="ios-switch-slider"></span>
+            </div>
+          </label>
+        </div>
+
+        <div id="onboard-presets-container">
+          <div class="section-desc" style="margin-bottom: 8px; margin-top: 4px;">Resolution & Frame Rate</div>
+          <div class="options-group" id="onboard-presets-group">
+            <!-- Dynamically populated according to detected module (v1.3 vs v2) -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 3: Transcoding Settings -->
       <div class="settings-section">
         <div class="section-title">Transcoding</div>
         <div class="section-desc">Background MP4 Conversion & Field Battery Optimization</div>
@@ -904,12 +970,23 @@
       updateConnectionUI(phoneConnected, cameraOk);
     }
 
-    // Application Settings (Stream Presets, Download Format, Auto Transcode, Show Storage)
+    // Application Settings (Stream Presets, Onboard Camera, Download Format, Auto Transcode, Show Storage)
+    let currentOnboardCamera = {
+      detected: false,
+      model: null,
+      name: null,
+      sensor: null,
+      default_preset: null,
+      presets: {}
+    };
+
     let currentSettings = {
       stream_preset: "720p60",
       download_format: "mp4",
       auto_transcode: true,
-      show_storage: true
+      show_storage: true,
+      onboard_record: false,
+      onboard_preset: "720p60"
     };
 
     async function loadSettings() {
@@ -917,6 +994,7 @@
         const res = await fetch('/api/settings');
         if (res.ok) {
           const data = await res.json();
+          if (data.onboard_camera) currentOnboardCamera = data.onboard_camera;
           if (data.settings) currentSettings = { ...currentSettings, ...data.settings };
         }
       } catch(e) {
@@ -939,6 +1017,80 @@
         const item = radio.closest('.option-item');
         if (item) item.classList.toggle('selected', isMatch);
       });
+
+      // Onboard Camera Section
+      const onboardSection = document.getElementById('onboard-camera-section');
+      const onboardBadge = document.getElementById('onboard-cam-badge');
+      const onboardDesc = document.getElementById('onboard-camera-desc');
+      const onboardCheckbox = document.getElementById('onboard-record-checkbox');
+      const onboardPill = document.getElementById('onboard-record-status-pill');
+      const onboardRow = document.getElementById('onboard-record-row');
+      const onboardPresetsGroup = document.getElementById('onboard-presets-group');
+
+      const isCamDetected = !!(currentOnboardCamera && currentOnboardCamera.detected);
+
+      if (onboardSection) {
+        onboardSection.classList.toggle('disabled', !isCamDetected);
+      }
+      if (onboardBadge) {
+        if (isCamDetected) {
+          onboardBadge.textContent = currentOnboardCamera.model ? currentOnboardCamera.model.toUpperCase() : 'DETECTED';
+          onboardBadge.classList.add('active');
+        } else {
+          onboardBadge.textContent = 'NOT DETECTED';
+          onboardBadge.classList.remove('active');
+        }
+      }
+      if (onboardDesc) {
+        if (isCamDetected) {
+          onboardDesc.textContent = `${currentOnboardCamera.name || 'Raspberry Pi Camera Module'} (${currentOnboardCamera.sensor || 'Active'})`;
+        } else {
+          onboardDesc.textContent = 'No onboard camera module detected. Connect a CSI camera module to enable.';
+        }
+      }
+
+      const isOnboardRec = isCamDetected && (currentSettings.onboard_record === true);
+      if (onboardCheckbox) {
+        onboardCheckbox.checked = isOnboardRec;
+        onboardCheckbox.disabled = !isCamDetected;
+      }
+      if (onboardPill) {
+        onboardPill.textContent = isOnboardRec ? 'ON' : 'OFF';
+        onboardPill.classList.toggle('active', isOnboardRec);
+      }
+      if (onboardRow) {
+        onboardRow.classList.toggle('active', isOnboardRec);
+      }
+
+      if (onboardPresetsGroup) {
+        const presets = (currentOnboardCamera && currentOnboardCamera.presets) ? currentOnboardCamera.presets : {};
+        const presetKeys = Object.keys(presets);
+        if (presetKeys.length > 0) {
+          if (!presets[currentSettings.onboard_preset]) {
+            currentSettings.onboard_preset = currentOnboardCamera.default_preset || presetKeys[0];
+          }
+          let html = '';
+          for (const [key, p] of Object.entries(presets)) {
+            const isMatch = (key === currentSettings.onboard_preset);
+            html += `
+              <label class="option-item ${isMatch ? 'selected' : ''}" onclick="onSettingChange('onboard_preset', '${key}')">
+                <input type="radio" class="option-radio" name="onboard_preset" value="${key}" ${isMatch ? 'checked' : ''}>
+                <div class="option-text">
+                  <span class="option-label">${p.label}</span>
+                  <span class="option-sub">${p.sub || ''}</span>
+                </div>
+              </label>
+            `;
+          }
+          onboardPresetsGroup.innerHTML = html;
+        } else {
+          onboardPresetsGroup.innerHTML = `
+            <div style="font-size: 11px; color: #666; padding: 10px 14px; background: rgba(255, 255, 255, 0.02); border-radius: 8px;">
+              Camera settings unavailable when no module is connected.
+            </div>
+          `;
+        }
+      }
 
       const autoTranscodeCheckbox = document.getElementById('auto-transcode-checkbox');
       const transcodeStatusPill = document.getElementById('transcode-status-pill');
@@ -971,6 +1123,34 @@
       const storageIndicator = document.getElementById('storage-indicator');
       if (storageIndicator) {
         storageIndicator.style.display = isShowStorage ? 'flex' : 'none';
+      }
+    }
+
+    async function onOnboardRecordToggle(enabled) {
+      if (isRecording) {
+        alert("Please stop recording before changing onboard camera settings.");
+        const cb = document.getElementById('onboard-record-checkbox');
+        if (cb) cb.checked = !enabled;
+        return;
+      }
+      currentSettings.onboard_record = enabled;
+      localStorage.setItem('berrystream_settings', JSON.stringify(currentSettings));
+      updateSettingsUI();
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ onboard_record: enabled })
+        });
+        const data = await res.json();
+        if (data.onboard_camera) currentOnboardCamera = data.onboard_camera;
+        if (data.settings) {
+          currentSettings = { ...currentSettings, ...data.settings };
+          updateSettingsUI();
+        }
+      } catch(e) {
+        console.error("Failed to update onboard record setting:", e);
       }
     }
 
@@ -1105,8 +1285,8 @@
     }
 
     async function onSettingChange(type, value) {
-      if (type === 'stream_preset' && isRecording) {
-        alert("Please stop recording before changing stream resolution.");
+      if ((type === 'stream_preset' || type === 'onboard_preset') && isRecording) {
+        alert("Please stop recording before changing resolution presets.");
         return;
       }
 
@@ -1258,6 +1438,9 @@
         if (data.camera_connected !== undefined) {
           serverCameraConnected = data.camera_connected;
         }
+        if (data.onboard_camera !== undefined) {
+          currentOnboardCamera = data.onboard_camera;
+        }
         if (data.storage) {
           lastStorageData = data.storage;
           updateStorageUI(data.storage);
@@ -1397,6 +1580,10 @@
         data.items.forEach(item => {
           const isMp4 = currentSettings.download_format === 'mp4';
           const displayName = isMp4 ? item.mp4_name : item.raw_name;
+          const isPiCam = item.id.startsWith('picam_');
+          const badgeHtml = isPiCam 
+            ? '<span class="source-badge picam">PI CAM</span>' 
+            : '<span class="source-badge evf">EVF</span>';
 
           let displaySize = `${item.raw_size_mb} MB`;
           let statusText = 'Raw MKV';
@@ -1442,7 +1629,7 @@
           card.innerHTML = `
             ${thumbHtml}
             <div class="card-body">
-              <div class="card-title">${displayName}</div>
+              <div class="card-title">${badgeHtml}${displayName}</div>
               <div class="card-meta">${displaySize} • ${statusText}</div>
               ${item.encoding ? `
                 <div class="progress-track">

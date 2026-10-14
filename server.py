@@ -30,12 +30,255 @@ STREAM_PRESETS = {
     "1080p60": {"width": 1920, "height": 1080, "fps": 60, "label": "1080p 60fps (Native Full HD)"},
 }
 
+ONBOARD_CAMERAS = {
+    "v2": {
+        "model": "v2",
+        "name": "Raspberry Pi Camera Module v2",
+        "sensor": "Sony IMX219 (8MP)",
+        "default_preset": "720p60",
+        "presets": {
+            "1080p30": {"width": 1920, "height": 1080, "fps": 30, "label": "1080p 30fps", "sub": "Full HD Video (16:9)"},
+            "720p60":  {"width": 1280, "height": 720,  "fps": 60, "label": "720p 60fps", "sub": "Smooth Action (16:9)"},
+            "720p30":  {"width": 1280, "height": 720,  "fps": 30, "label": "720p 30fps", "sub": "Standard Framerate (16:9)"},
+            "1640x1232_30": {"width": 1640, "height": 1232, "fps": 30, "label": "1640x1232 30fps", "sub": "Full Sensor FoV (4:3 Binned)"},
+            "640x480_60":   {"width": 640,  "height": 480,  "fps": 60, "label": "VGA 60fps", "sub": "High Speed (4:3)"},
+            "640x480_90":   {"width": 640,  "height": 480,  "fps": 90, "label": "VGA 90fps", "sub": "Ultra High Speed (4:3)"},
+        }
+    },
+    "v1.3": {
+        "model": "v1.3",
+        "name": "Raspberry Pi Camera Module v1.3",
+        "sensor": "OmniVision OV5647 (5MP)",
+        "default_preset": "720p60",
+        "presets": {
+            "1080p30": {"width": 1920, "height": 1080, "fps": 30, "label": "1080p 30fps", "sub": "Full HD Video (16:9)"},
+            "720p60":  {"width": 1280, "height": 720,  "fps": 60, "label": "720p 60fps", "sub": "Smooth 60p, Full FoV (16:9)"},
+            "720p30":  {"width": 1280, "height": 720,  "fps": 30, "label": "720p 30fps", "sub": "Standard 30p, Full FoV (16:9)"},
+            "640x480_60": {"width": 640,  "height": 480,  "fps": 60, "label": "VGA 60fps", "sub": "High Speed (4:3)"},
+            "640x480_90": {"width": 640,  "height": 480,  "fps": 90, "label": "VGA 90fps", "sub": "High Speed (4:3)"},
+        }
+    }
+}
+
 DEFAULT_SETTINGS = {
     "stream_preset": "720p60",
     "download_format": "mp4",  # 'mp4' or 'mkv'
     "auto_transcode": True,    # True = transcode immediately; False = leave as raw MKV in field
-    "show_storage": True       # True = show storage info badge on live view
+    "show_storage": True,      # True = show storage info badge on live view
+    "onboard_record": False,   # True = simultaneously record onboard Pi camera
+    "onboard_preset": "720p60" # Default resolution/fps preset for onboard camera
 }
+
+_onboard_cam_cache = None
+_onboard_cam_cache_time = 0
+
+def detect_onboard_camera(force_refresh=False):
+    """Detects whether an onboard Raspberry Pi camera module (v1.3 or v2) is connected.
+    
+    Checks in priority order:
+    1. ONBOARD_CAMERA_MODEL environment variable (useful for testing and overrides)
+    2. /sys/bus/i2c/drivers/ (kernel driver bindings for imx219 or ov5647)
+    3. /sys/bus/i2c/devices/ (device names in sysfs)
+    4. /proc/device-tree or /sys/firmware/devicetree/base
+    5. rpicam-hello / libcamera-hello CLI query (if available)
+    6. v4l2-ctl --list-devices / sysfs video4linux
+    """
+    global _onboard_cam_cache, _onboard_cam_cache_time
+    now = time.time()
+    if not force_refresh and _onboard_cam_cache is not None and (now - _onboard_cam_cache_time < 5.0):
+        return _onboard_cam_cache
+
+    detected_key = None
+
+    # 1. Environment variable override
+    env_override = os.environ.get("ONBOARD_CAMERA_MODEL", "").strip().lower()
+    if env_override:
+        if env_override in ("v2", "imx219", "2"):
+            detected_key = "v2"
+        elif env_override in ("v1.3", "v1", "ov5647", "1.3", "1"):
+            detected_key = "v1.3"
+        elif env_override in ("none", "false", "0", "off", "disabled"):
+            detected_key = None
+
+    # 2. Sysfs I2C driver directory checks
+    if detected_key is None and not env_override:
+        try:
+            imx219_driver = "/sys/bus/i2c/drivers/imx219"
+            if os.path.isdir(imx219_driver):
+                entries = [e for e in os.listdir(imx219_driver) if re.match(r"^\d+-[0-9a-fA-F]+$", e)]
+                if entries:
+                    detected_key = "v2"
+
+            if detected_key is None:
+                ov5647_driver = "/sys/bus/i2c/drivers/ov5647"
+                if os.path.isdir(ov5647_driver):
+                    entries = [e for e in os.listdir(ov5647_driver) if re.match(r"^\d+-[0-9a-fA-F]+$", e)]
+                    if entries:
+                        detected_key = "v1.3"
+        except Exception:
+            pass
+
+    # 3. Sysfs I2C devices checks (/sys/bus/i2c/devices/*/name)
+    if detected_key is None and not env_override:
+        try:
+            i2c_devs = "/sys/bus/i2c/devices"
+            if os.path.isdir(i2c_devs):
+                for dev in os.listdir(i2c_devs):
+                    name_file = os.path.join(i2c_devs, dev, "name")
+                    if os.path.isfile(name_file):
+                        with open(name_file, "r") as nf:
+                            dev_name = nf.read().strip().lower()
+                            if "imx219" in dev_name:
+                                detected_key = "v2"
+                                break
+                            elif "ov5647" in dev_name:
+                                detected_key = "v1.3"
+                                break
+        except Exception:
+            pass
+
+    # 4. Device tree check
+    if detected_key is None and not env_override:
+        try:
+            dt_base = "/proc/device-tree" if os.path.isdir("/proc/device-tree") else "/sys/firmware/devicetree/base"
+            if os.path.isdir(dt_base):
+                for root, dirs, files in os.walk(dt_base):
+                    low_root = root.lower()
+                    if "imx219" in low_root:
+                        detected_key = "v2"
+                        break
+                    elif "ov5647" in low_root:
+                        detected_key = "v1.3"
+                        break
+        except Exception:
+            pass
+
+    # 5. rpicam-hello / libcamera-hello CLI checks
+    if detected_key is None and not env_override:
+        for cmd_name in ("rpicam-hello", "libcamera-hello"):
+            if shutil.which(cmd_name):
+                try:
+                    res = subprocess.run([cmd_name, "--list-cameras"], capture_output=True, text=True, timeout=1.5)
+                    out = res.stdout.lower() + res.stderr.lower()
+                    if "imx219" in out:
+                        detected_key = "v2"
+                        break
+                    elif "ov5647" in out:
+                        detected_key = "v1.3"
+                        break
+                except Exception:
+                    pass
+
+    # 6. v4l2-ctl / video4linux name checks
+    if detected_key is None and not env_override:
+        try:
+            v4l_dir = "/sys/class/video4linux"
+            if os.path.isdir(v4l_dir):
+                for node in os.listdir(v4l_dir):
+                    name_path = os.path.join(v4l_dir, node, "name")
+                    if os.path.isfile(name_path):
+                        with open(name_path, "r") as nf:
+                            content = nf.read().strip().lower()
+                            if "imx219" in content:
+                                detected_key = "v2"
+                                break
+                            elif "ov5647" in content:
+                                detected_key = "v1.3"
+                                break
+        except Exception:
+            pass
+
+    if detected_key and detected_key in ONBOARD_CAMERAS:
+        cam_meta = ONBOARD_CAMERAS[detected_key]
+        result = {
+            "detected": True,
+            "model": detected_key,
+            "name": cam_meta["name"],
+            "sensor": cam_meta["sensor"],
+            "default_preset": cam_meta["default_preset"],
+            "presets": cam_meta["presets"]
+        }
+    else:
+        result = {
+            "detected": False,
+            "model": None,
+            "name": None,
+            "sensor": None,
+            "default_preset": None,
+            "presets": {}
+        }
+
+    _onboard_cam_cache = result
+    _onboard_cam_cache_time = now
+    return result
+
+def get_onboard_camera_info():
+    return detect_onboard_camera()
+
+def build_onboard_record_command(filepath, preset_key=None, camera_info=None):
+    """Builds the command to capture video from the onboard camera module."""
+    if camera_info is None:
+        camera_info = detect_onboard_camera()
+
+    presets = camera_info.get("presets", {})
+    preset = presets.get(preset_key)
+    if not preset:
+        default_key = camera_info.get("default_preset")
+        preset = presets.get(default_key) or next(iter(presets.values()), {"width": 1280, "height": 720, "fps": 60})
+
+    width = preset["width"]
+    height = preset["height"]
+    fps = preset["fps"]
+
+    # Mock command for test environments or desktop
+    mock_cmd = os.environ.get("MOCK_ONBOARD_RECORD_CMD")
+    if mock_cmd:
+        return [part.replace("{filepath}", filepath) for part in mock_cmd.split()]
+
+    # 1. Prefer rpicam-vid (Raspberry Pi OS Bookworm)
+    if shutil.which("rpicam-vid"):
+        return [
+            "rpicam-vid", "-n", "-t", "0",
+            "--width", str(width),
+            "--height", str(height),
+            "--framerate", str(fps),
+            "--codec", "libav",
+            "-o", filepath
+        ]
+
+    # 2. Prefer libcamera-vid (Raspberry Pi OS Bullseye)
+    if shutil.which("libcamera-vid"):
+        return [
+            "libcamera-vid", "-n", "-t", "0",
+            "--width", str(width),
+            "--height", str(height),
+            "--framerate", str(fps),
+            "--codec", "libav",
+            "-o", filepath
+        ]
+
+    # 3. Check V4L2 device if available
+    onboard_dev = os.environ.get("ONBOARD_VIDEO_DEVICE", "/dev/video1")
+    if os.path.exists(onboard_dev):
+        return [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-f", "v4l2",
+            "-video_size", f"{width}x{height}",
+            "-framerate", str(fps),
+            "-i", onboard_dev,
+            "-c:v", "copy",
+            filepath
+        ]
+
+    # 4. Fallback test pattern for desktop/testing
+    return [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi",
+        "-i", f"testsrc=size={width}x{height}:rate={fps}",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-t", "3600",
+        filepath
+    ]
 
 def get_storage_info():
     """Returns disk storage usage for the recordings partition/filesystem."""
@@ -175,6 +418,8 @@ threading.Thread(target=init_stream_preset, daemon=True).start()
 
 current_process = None
 current_raw_file = None
+current_onboard_process = None
+current_onboard_raw_file = None
 start_time = 0
 last_heartbeat_time = 0
 encoding_status = {}  # { base_id: { "percent": int, "eta_text": str } }
@@ -205,8 +450,8 @@ def enqueue_orphaned_recordings(manual=False):
     try:
         for f in sorted(os.listdir(REC_DIR)):
             if f.endswith(".mkv"):
-                # Skip if actively being recorded to by the camera
-                if f == current_raw_file:
+                # Skip if actively being recorded to by either EVF or onboard camera
+                if f == current_raw_file or f == current_onboard_raw_file:
                     continue
 
                 base = os.path.splitext(f)[0]
@@ -283,10 +528,13 @@ def set_low_priority():
 
 def stop_recording_internal(reason="manual"):
     """Thread-safe recording stop & finalize: sends SIGINT and conditionally enqueues for sequential transcoding."""
-    global current_process, current_raw_file
+    global current_process, current_raw_file, current_onboard_process, current_onboard_raw_file
+    finished_files = []
+
+    # Stop EVF recording
     if current_process and current_process.poll() is None:
-        finished_file = current_raw_file
-        print(f"Stopping recording ({reason}): {finished_file}")
+        finished_evf = current_raw_file
+        print(f"Stopping EVF recording ({reason}): {finished_evf}")
         current_process.send_signal(signal.SIGINT)
         try:
             current_process.wait(timeout=3)
@@ -295,23 +543,45 @@ def stop_recording_internal(reason="manual"):
 
         current_process = None
         current_raw_file = None
+        if finished_evf:
+            finished_files.append(finished_evf)
 
-        if finished_file:
-            settings = load_settings()
-            if settings.get("auto_transcode", True):
-                enqueue_recording(finished_file)
-            else:
-                print(f"Auto-transcode is OFF: Leaving {finished_file} as raw MKV")
-        return finished_file
+    # Stop Onboard Pi Camera recording
+    if current_onboard_process and current_onboard_process.poll() is None:
+        finished_onboard = current_onboard_raw_file
+        print(f"Stopping Onboard recording ({reason}): {finished_onboard}")
+        current_onboard_process.send_signal(signal.SIGINT)
+        try:
+            current_onboard_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            current_onboard_process.kill()
+
+        current_onboard_process = None
+        current_onboard_raw_file = None
+        if finished_onboard:
+            finished_files.append(finished_onboard)
+
+    if finished_files:
+        settings = load_settings()
+        if settings.get("auto_transcode", True):
+            for f in finished_files:
+                enqueue_recording(f)
+        else:
+            for f in finished_files:
+                print(f"Auto-transcode is OFF: Leaving {f} as raw MKV")
+        return finished_files[0]
+
     return None
 
 def recording_watchdog_loop():
     """Background watchdog: automatically saves & finalizes recording if phone dies or disconnects."""
-    global current_process, last_heartbeat_time
+    global current_process, current_onboard_process, last_heartbeat_time
     HEARTBEAT_TIMEOUT = 5.0
     while True:
         time.sleep(1.0)
-        if current_process and current_process.poll() is None:
+        is_active = (current_process and current_process.poll() is None) or \
+                    (current_onboard_process and current_onboard_process.poll() is None)
+        if is_active:
             now = time.time()
             if last_heartbeat_time > 0 and (now - last_heartbeat_time > HEARTBEAT_TIMEOUT):
                 print(f"Watchdog: Phone heartbeat lost ({now - last_heartbeat_time:.1f}s > {HEARTBEAT_TIMEOUT}s). Auto-saving recording...")
@@ -341,6 +611,29 @@ def get_file_duration(path):
     except Exception:
         return 0.0
 
+def get_file_fps(path, fallback_fps=60):
+    try:
+        res = subprocess.run([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=r_frame_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            path
+        ], capture_output=True, text=True, timeout=5)
+        out = res.stdout.strip()
+        if "/" in out:
+            num, den = out.split("/", 1)
+            val = float(num) / float(den)
+            if val > 0:
+                return int(round(val))
+        elif out:
+            val = float(out)
+            if val > 0:
+                return int(round(val))
+    except Exception:
+        pass
+    return fallback_fps
+
 def process_recording(raw_filename):
     """Background worker: creates thumbnail and transcodes to iOS MP4 cleanly with progress tracking."""
     raw_path = os.path.join(REC_DIR, raw_filename)
@@ -363,10 +656,17 @@ def process_recording(raw_filename):
     # 2. Get total clip duration for progress calculation
     total_duration = get_file_duration(raw_path)
 
-    # Determine framerate from current settings
+    # Determine framerate from current settings or detected onboard preset
     current_settings = load_settings()
-    preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["720p60"])
-    fps_str = str(preset["fps"])
+    if raw_filename.startswith("picam_"):
+        cam_info = detect_onboard_camera()
+        p_key = current_settings.get("onboard_preset", "720p60")
+        p_info = cam_info.get("presets", {}).get(p_key, {"fps": 60})
+        fps_val = get_file_fps(raw_path, fallback_fps=p_info.get("fps", 60))
+    else:
+        preset = STREAM_PRESETS.get(current_settings.get("stream_preset"), STREAM_PRESETS["720p60"])
+        fps_val = get_file_fps(raw_path, fallback_fps=preset["fps"])
+    fps_str = str(fps_val)
 
     encoding_status[base_name] = {"percent": 0, "eta_text": "Starting..."}
     encode_start = time.time()
@@ -426,31 +726,41 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def do_GET(self):
-        global current_process, current_raw_file, start_time
+        global current_process, current_raw_file, current_onboard_process, current_onboard_raw_file, start_time
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/record/status":
-            is_recording = current_process is not None and current_process.poll() is None
+            is_recording = (current_process is not None and current_process.poll() is None) or \
+                           (current_onboard_process is not None and current_onboard_process.poll() is None)
             elapsed = int(time.time() - start_time) if is_recording else 0
+            onboard_info = detect_onboard_camera()
             self._send_json({
                 "recording": is_recording,
                 "elapsed": elapsed,
                 "file": current_raw_file,
+                "onboard_file": current_onboard_raw_file,
+                "onboard_recording": current_onboard_process is not None and current_onboard_process.poll() is None,
                 "storage": get_storage_info(),
-                "camera_connected": is_camera_connected()
+                "camera_connected": is_camera_connected(),
+                "onboard_camera": onboard_info
             })
 
         elif parsed.path in ("/api/connection/status", "/api/camera/status"):
+            onboard_info = detect_onboard_camera()
             self._send_json({
                 "phone": True,
-                "camera_connected": is_camera_connected()
+                "camera_connected": is_camera_connected(),
+                "onboard_camera": onboard_info
             })
 
         elif parsed.path == "/api/storage":
             self._send_json(get_storage_info())
 
         elif parsed.path == "/api/record/start":
-            if current_process is None or current_process.poll() is not None:
+            is_evf_active = current_process is not None and current_process.poll() is None
+            is_onboard_active = current_onboard_process is not None and current_onboard_process.poll() is None
+
+            if not is_evf_active and not is_onboard_active:
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 current_raw_file = f"evf_{timestamp}.mkv"
                 filepath = os.path.join(REC_DIR, current_raw_file)
@@ -462,11 +772,41 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                     filepath
                 ]
                 current_process = subprocess.Popen(cmd)
+
+                # Simultaneous Onboard Camera Recording
+                settings = load_settings()
+                onboard_info = detect_onboard_camera()
+                if settings.get("onboard_record", False) and onboard_info.get("detected"):
+                    current_onboard_raw_file = f"picam_{timestamp}.mkv"
+                    onboard_path = os.path.join(REC_DIR, current_onboard_raw_file)
+                    onboard_cmd = build_onboard_record_command(
+                        onboard_path,
+                        preset_key=settings.get("onboard_preset"),
+                        camera_info=onboard_info
+                    )
+                    try:
+                        current_onboard_process = subprocess.Popen(onboard_cmd)
+                    except Exception as e:
+                        print(f"Failed to start onboard camera recording: {e}")
+                        current_onboard_process = None
+                        current_onboard_raw_file = None
+                else:
+                    current_onboard_process = None
+                    current_onboard_raw_file = None
+
                 start_time = time.time()
                 last_heartbeat_time = time.time()
-                self._send_json({"status": "started", "file": current_raw_file})
+                self._send_json({
+                    "status": "started",
+                    "file": current_raw_file,
+                    "onboard_file": current_onboard_raw_file
+                })
             else:
-                self._send_json({"status": "already_recording", "file": current_raw_file})
+                self._send_json({
+                    "status": "already_recording",
+                    "file": current_raw_file,
+                    "onboard_file": current_onboard_raw_file
+                })
 
         elif parsed.path == "/api/record/ping":
             last_heartbeat_time = time.time()
@@ -486,13 +826,18 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "not_recording"})
 
         elif parsed.path == "/api/settings":
-            self._send_json({"settings": load_settings(), "presets": STREAM_PRESETS})
+            onboard_info = detect_onboard_camera()
+            self._send_json({
+                "settings": load_settings(),
+                "presets": STREAM_PRESETS,
+                "onboard_camera": onboard_info
+            })
 
         elif parsed.path == "/api/transcode":
             query = parse_qs(parsed.query)
             clip_id = query.get("id", [None])[0]
             if clip_id:
-                if not re.match(r"^evf_[\w-]+$", clip_id):
+                if not re.match(r"^(evf|picam)_[\w-]+$", clip_id):
                     self._send_json({"status": "error", "message": "Invalid clip ID"})
                     return
                 raw_filename = f"{clip_id}.mkv"
@@ -558,7 +903,7 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/record/delete":
             query = parse_qs(parsed.query)
             clip_id = query.get("id", [None])[0]
-            if not clip_id or not re.match(r"^evf_[\w-]+$", clip_id):
+            if not clip_id or not re.match(r"^(evf|picam)_[\w-]+$", clip_id):
                 self._send_json({"status": "error", "message": "Invalid clip ID"})
                 return
 
@@ -694,6 +1039,10 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                 new_settings["show_storage"] = bool(data["show_storage"])
             if "hide_storage" in data:
                 new_settings["show_storage"] = not bool(data["hide_storage"])
+            if "onboard_record" in data:
+                new_settings["onboard_record"] = bool(data["onboard_record"])
+            if "onboard_preset" in data:
+                new_settings["onboard_preset"] = str(data["onboard_preset"])
 
             saved = save_settings(new_settings)
 
@@ -701,7 +1050,13 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
             if saved.get("auto_transcode", True):
                 enqueue_orphaned_recordings()
 
-            self._send_json({"status": "saved", "settings": saved, "presets": STREAM_PRESETS})
+            onboard_info = detect_onboard_camera()
+            self._send_json({
+                "status": "saved",
+                "settings": saved,
+                "presets": STREAM_PRESETS,
+                "onboard_camera": onboard_info
+            })
 
         elif parsed.path == "/api/transcode":
             length = int(self.headers.get("Content-Length", 0))
@@ -718,7 +1073,7 @@ class BerryStreamHandler(SimpleHTTPRequestHandler):
                 clip_id = query.get("id", [None])[0]
 
             if clip_id:
-                if not re.match(r"^evf_[\w-]+$", clip_id):
+                if not re.match(r"^(evf|picam)_[\w-]+$", clip_id):
                     self._send_json({"status": "error", "message": "Invalid clip ID"})
                     return
                 raw_filename = f"{clip_id}.mkv"

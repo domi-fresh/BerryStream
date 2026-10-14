@@ -40,6 +40,11 @@ class TestAutoTranscode(unittest.TestCase):
         # Reset server globals
         server.current_process = None
         server.current_raw_file = None
+        server.current_onboard_process = None
+        server.current_onboard_raw_file = None
+        server._onboard_cam_cache = None
+        server._onboard_cam_cache_time = 0
+        os.environ.pop("ONBOARD_CAMERA_MODEL", None)
 
         # Reset default settings file
         if os.path.exists(server.SETTINGS_FILE):
@@ -402,6 +407,256 @@ class TestAutoTranscode(unittest.TestCase):
         self.assertFalse(item["ready"])
         self.assertFalse(item["encoding"])
         self.assertTrue(item["untranscoded"])
+
+    # --- Onboard Camera Tests ---
+
+    def test_default_settings_includes_onboard_camera(self):
+        """Verify default settings include onboard_record and onboard_preset."""
+        settings = server.load_settings()
+        self.assertIn("onboard_record", settings)
+        self.assertFalse(settings["onboard_record"])
+        self.assertIn("onboard_preset", settings)
+        self.assertEqual(settings["onboard_preset"], "720p60")
+
+    def test_detect_onboard_camera_none_by_default(self):
+        """When running in clean desktop/test environment, detect_onboard_camera returns detected: False."""
+        server._onboard_cam_cache = None
+        os.environ.pop("ONBOARD_CAMERA_MODEL", None)
+        info = server.detect_onboard_camera(force_refresh=True)
+        self.assertFalse(info["detected"])
+        self.assertIsNone(info["model"])
+        self.assertEqual(info["presets"], {})
+
+    def test_detect_onboard_camera_v2_env(self):
+        """When ONBOARD_CAMERA_MODEL=v2, returns Sony IMX219 v2 camera and presets."""
+        server._onboard_cam_cache = None
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v2"
+        info = server.detect_onboard_camera(force_refresh=True)
+        self.assertTrue(info["detected"])
+        self.assertEqual(info["model"], "v2")
+        self.assertIn("Camera Module v2", info["name"])
+        self.assertIn("IMX219", info["sensor"])
+        self.assertIn("1080p30", info["presets"])
+        self.assertIn("720p60", info["presets"])
+        self.assertIn("1640x1232_30", info["presets"])
+        self.assertIn("640x480_90", info["presets"])
+
+    def test_detect_onboard_camera_v1_env(self):
+        """When ONBOARD_CAMERA_MODEL=v1.3, returns OmniVision OV5647 v1.3 camera and presets."""
+        server._onboard_cam_cache = None
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v1.3"
+        info = server.detect_onboard_camera(force_refresh=True)
+        self.assertTrue(info["detected"])
+        self.assertEqual(info["model"], "v1.3")
+        self.assertIn("Camera Module v1.3", info["name"])
+        self.assertIn("OV5647", info["sensor"])
+        self.assertIn("1080p30", info["presets"])
+        self.assertIn("720p60", info["presets"])
+        self.assertIn("640x480_60", info["presets"])
+        self.assertNotIn("1640x1232_30", info["presets"])
+
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    def test_detect_onboard_camera_sysfs_v2(self, mock_listdir, mock_isdir):
+        """Verify sysfs detection of IMX219 (v2) module."""
+        server._onboard_cam_cache = None
+        os.environ.pop("ONBOARD_CAMERA_MODEL", None)
+
+        def isdir_side_effect(path):
+            return path == "/sys/bus/i2c/drivers/imx219"
+
+        mock_isdir.side_effect = isdir_side_effect
+        mock_listdir.return_value = ["10-0010", "bind", "unbind"]
+
+        info = server.detect_onboard_camera(force_refresh=True)
+        self.assertTrue(info["detected"])
+        self.assertEqual(info["model"], "v2")
+
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    def test_detect_onboard_camera_sysfs_v1(self, mock_listdir, mock_isdir):
+        """Verify sysfs detection of OV5647 (v1.3) module."""
+        server._onboard_cam_cache = None
+        os.environ.pop("ONBOARD_CAMERA_MODEL", None)
+
+        def isdir_side_effect(path):
+            return path == "/sys/bus/i2c/drivers/ov5647"
+
+        mock_isdir.side_effect = isdir_side_effect
+        mock_listdir.return_value = ["10-0036", "bind", "unbind"]
+
+        info = server.detect_onboard_camera(force_refresh=True)
+        self.assertTrue(info["detected"])
+        self.assertEqual(info["model"], "v1.3")
+
+    def test_build_onboard_record_command(self):
+        """Verify build_onboard_record_command produces valid command parameters."""
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v2"
+        cmd = server.build_onboard_record_command("/path/to/test.mkv", preset_key="1080p30")
+        self.assertIn("/path/to/test.mkv", cmd)
+        cmd_str = " ".join(cmd)
+        self.assertTrue("1920" in cmd_str or "1080" in cmd_str)
+
+    def test_settings_api_includes_onboard_camera(self):
+        """Verify /api/settings GET returns onboard_camera object."""
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v2"
+        server._onboard_cam_cache = None
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/settings"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertIn("onboard_camera", resp)
+        self.assertTrue(resp["onboard_camera"]["detected"])
+        self.assertEqual(resp["onboard_camera"]["model"], "v2")
+
+    def test_post_settings_saves_onboard_settings(self):
+        """Verify saving onboard_record and onboard_preset via POST /api/settings."""
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        payload = json.dumps({"onboard_record": True, "onboard_preset": "1080p30"}).encode("utf-8")
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = MagicMock()
+        handler.rfile.read.return_value = payload
+        handler.path = "/api/settings"
+        handler._send_json = MagicMock()
+
+        handler.do_POST()
+
+        settings = server.load_settings()
+        self.assertTrue(settings.get("onboard_record"))
+        self.assertEqual(settings.get("onboard_preset"), "1080p30")
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertTrue(resp["settings"]["onboard_record"])
+        self.assertEqual(resp["settings"]["onboard_preset"], "1080p30")
+
+    @patch("subprocess.Popen")
+    def test_simultaneous_recording_start(self, mock_popen):
+        """When onboard_record is True and camera is detected, start_record begins both EVF and Onboard capture."""
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v2"
+        server._onboard_cam_cache = None
+        server.save_settings({"onboard_record": True, "onboard_preset": "720p60"})
+
+        mock_proc_evf = MagicMock()
+        mock_proc_evf.poll.return_value = None
+        mock_proc_onboard = MagicMock()
+        mock_proc_onboard.poll.return_value = None
+        mock_popen.side_effect = [mock_proc_evf, mock_proc_onboard]
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/record/start"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        self.assertEqual(mock_popen.call_count, 2)
+        self.assertIsNotNone(server.current_process)
+        self.assertIsNotNone(server.current_onboard_process)
+        self.assertTrue(server.current_raw_file.startswith("evf_"))
+        self.assertTrue(server.current_onboard_raw_file.startswith("picam_"))
+
+        resp = handler._send_json.call_args[0][0]
+        self.assertEqual(resp["status"], "started")
+        self.assertIn("evf_", resp["file"])
+        self.assertIn("picam_", resp["onboard_file"])
+
+    @patch("subprocess.Popen")
+    def test_record_start_onboard_disabled(self, mock_popen):
+        """When onboard_record is False, only EVF is started."""
+        os.environ["ONBOARD_CAMERA_MODEL"] = "v2"
+        server._onboard_cam_cache = None
+        server.save_settings({"onboard_record": False})
+
+        mock_proc_evf = MagicMock()
+        mock_proc_evf.poll.return_value = None
+        mock_popen.return_value = mock_proc_evf
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/record/start"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        self.assertEqual(mock_popen.call_count, 1)
+        self.assertIsNotNone(server.current_process)
+        self.assertIsNone(server.current_onboard_process)
+        self.assertIsNone(server.current_onboard_raw_file)
+
+    @patch("server.process_recording")
+    def test_simultaneous_recording_stop_enqueues_both(self, mock_process):
+        """When both EVF and Onboard recordings are active, stopping enqueues both files."""
+        server.save_settings({"auto_transcode": True})
+
+        mock_evf = MagicMock()
+        mock_evf.poll.return_value = None
+        mock_onboard = MagicMock()
+        mock_onboard.poll.return_value = None
+
+        server.current_process = mock_evf
+        server.current_raw_file = "evf_20261014_100000.mkv"
+        server.current_onboard_process = mock_onboard
+        server.current_onboard_raw_file = "picam_20261014_100000.mkv"
+
+        stopped = server.stop_recording_internal(reason="test_both")
+
+        mock_evf.send_signal.assert_called_once()
+        mock_onboard.send_signal.assert_called_once()
+        self.assertIsNone(server.current_process)
+        self.assertIsNone(server.current_onboard_process)
+
+        time.sleep(0.05)
+        calls = [c[0][0] for c in mock_process.call_args_list]
+        self.assertIn("evf_20261014_100000.mkv", calls)
+        self.assertIn("picam_20261014_100000.mkv", calls)
+
+    @patch("server.process_recording")
+    def test_transcode_endpoint_accepts_picam_id(self, mock_process):
+        """Verify /api/transcode accepts picam_ clip ID."""
+        server.save_settings({"auto_transcode": False})
+        with open(os.path.join(server.REC_DIR, "picam_20261014_777777.mkv"), "w") as f:
+            f.write("mock picam mkv")
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/transcode?id=picam_20261014_777777"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertEqual(resp.get("status"), "enqueued")
+        time.sleep(0.05)
+        mock_process.assert_called_with("picam_20261014_777777.mkv")
+
+    def test_delete_endpoint_accepts_picam_id(self):
+        """Verify /api/record/delete accepts picam_ clip ID and cleans up assets."""
+        mkv_path = os.path.join(server.REC_DIR, "picam_20261014_888888.mkv")
+        mp4_path = os.path.join(server.MP4_DIR, "picam_20261014_888888.mp4")
+        with open(mkv_path, "w") as f:
+            f.write("mkv")
+        with open(mp4_path, "w") as f:
+            f.write("mp4")
+
+        handler = server.BerryStreamHandler.__new__(server.BerryStreamHandler)
+        handler.headers = {}
+        handler.path = "/api/record/delete?id=picam_20261014_888888"
+        handler._send_json = MagicMock()
+
+        handler.do_GET()
+
+        handler._send_json.assert_called_once()
+        resp = handler._send_json.call_args[0][0]
+        self.assertEqual(resp.get("status"), "deleted")
+        self.assertFalse(os.path.exists(mkv_path))
+        self.assertFalse(os.path.exists(mp4_path))
 
 if __name__ == "__main__":
     unittest.main()

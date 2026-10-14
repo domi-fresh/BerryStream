@@ -145,6 +145,12 @@ docker compose up -d # This may take a couple of minutes due to initial setup
     - `720p 30fps` *(Ultra-low bandwidth and maximum power saving)*.
     - `1080p 30fps` *(Full HD quality with reduced USB bandwidth)*.
     - `1080p 60fps` *(Native Full HD recommended for Pi 4 / Pi 5)*.
+  - **Onboard Camera Recording (Simultaneous Capture):**
+    - **Automatic Hardware Detection:** The system probes `/sys/bus/i2c/drivers`, V4L2, and libcamera to detect connected CSI camera modules:
+      - **Raspberry Pi Camera Module v2 (Sony IMX219):** Exposes `1080p30`, `720p60`, `720p30`, `1640x1232 30fps (Full FoV 4:3)`, `VGA 60fps`, and `VGA 90fps`.
+      - **Raspberry Pi Camera Module v1.3 (OmniVision OV5647):** Exposes `1080p30`, `720p60`, `720p30`, `VGA 60fps`, and `VGA 90fps`.
+    - **Greyed-Out When Not Detected:** If no CSI camera module is attached to the Raspberry Pi, the entire onboard camera section is automatically greyed out and disabled.
+    - **Simultaneous Capture:** When the toggle is ON, pressing **REC** captures both the HDMI EVF feed (`evf_*.mkv`) and the onboard camera feed (`picam_*.mkv`) simultaneously, stopping and transcoding both cleanly.
   - **Transcoding (Battery Saving Mode):**
     - `Automatic Transcoding (ON / Default)`: Transcodes raw MKVs to web-optimized MP4 immediately after each take completes.
     - `Field Mode (OFF)`: Saves only the raw `.mkv` files without starting background CPU-intensive FFmpeg transcoding, maximizing battery life while in the field. Once turned back ON (e.g. at home plugged into the wall), all orphaned MKVs are automatically detected and transcoded sequentially.
@@ -238,15 +244,15 @@ docker compose up -d --build
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/record/status` | `GET` | Returns active recording status, elapsed time, current filename, and disk storage usage. |
-| `/api/record/start` | `GET` | Starts raw MKV recording from `go2rtc`. |
-| `/api/record/stop` | `GET / POST` | Finalizes active recording and conditionally enqueues MP4 transcode if auto-transcode is enabled. |
+| `/api/record/status` | `GET` | Returns active recording status, elapsed time, EVF & Onboard recording filenames, disk storage, and onboard camera status. |
+| `/api/record/start` | `GET` | Starts raw MKV recording for EVF feed (and simultaneous onboard Pi camera capture if enabled). |
+| `/api/record/stop` | `GET / POST` | Finalizes active recordings (both EVF and onboard) and enqueues MP4 transcodes. |
 | `/api/record/ping` | `GET` | Heartbeat endpoint for the client watchdog. |
-| `/api/record/delete?id={id}` | `GET / POST` | Deletes raw MKV, MP4, temp files, and thumbnail from disk. |
-| `/api/gallery` | `GET` | Lists all recordings with thumbnail paths, sizes, readiness, and encoding progress. |
+| `/api/record/delete?id={id}` | `GET / POST` | Deletes raw MKV, MP4, temp files, and thumbnail from disk (supports both `evf_` and `picam_` clips). |
+| `/api/gallery` | `GET` | Lists all recordings with thumbnail paths, sizes, readiness, encoding progress, and camera source (`EVF` vs `PI CAM`). |
 | `/api/storage` | `GET` | Returns real-time disk storage statistics (total, used, free bytes, percentages, and human-readable strings). |
-| `/api/settings` | `GET` | Retrieves current settings (`stream_preset`, `download_format`, `auto_transcode`, `show_storage`) and supported stream presets. |
-| `/api/settings` | `POST` | Updates stream presets, download formats, transcoding, and storage indicator visibility. |
+| `/api/settings` | `GET` | Retrieves current settings, HDMI stream presets, and detected onboard camera module info with supported resolutions & framerates. |
+| `/api/settings` | `POST` | Updates stream presets, download formats, transcoding, storage indicator visibility, and onboard recording options. |
 | `/api/transcode` | `GET / POST` | Manually enqueues an individual recording (`?id={id}`) or all orphaned MKVs for transcoding. |
 | `/media/thumb/{file}` | `GET` | Serves preview JPEG thumbnails. |
 | `/media/mp4/{file}` | `GET` | Streams MP4 video with HTTP 206 Byte-Range support for Safari. |
